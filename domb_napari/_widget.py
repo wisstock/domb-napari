@@ -54,7 +54,7 @@ def split_channels(viewer: Viewer, img:Image,
                     viewer.add_image(ch_img, name=ch_name, colormap='turbo')
         elif series_dim == 3:
             print(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
-            ch_name = img.name + '_processed'
+            ch_name = img.name + '_ch0'
             ch_img = img.data
             if gaussian_blur:
                 ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
@@ -73,11 +73,11 @@ def split_channels(viewer: Viewer, img:Image,
         
 
 @magic_factory(call_button='Calc Red-Green',
-               insertions_threshold={"widget_type": "FloatSlider", 'max': 1},)
+               insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)
 def der_series(viewer: Viewer, img:Image,
-               base_frames:int=2, space_frames:int=2, stim_frames:int=2,
+               left_frames:int=2, space_frames:int=2, right_frames:int=2,
                save_mask_series:bool=False,
-               insertions_threshold:float=0.2):
+               insertion_threshold:float=0.2):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
@@ -85,12 +85,12 @@ def der_series(viewer: Viewer, img:Image,
 
         der_img = []
         mask_img = []
-        for i in range(ref_img.shape[0]-(base_frames+stim_frames+space_frames)):
-            img_base = np.mean(ref_img[i:i+base_frames], axis=0)
-            img_stim = np.mean(ref_img[i+base_frames+stim_frames:i+base_frames+stim_frames+space_frames], axis=0)
+        for i in range(ref_img.shape[0]-(left_frames+right_frames+space_frames)):
+            img_base = np.mean(ref_img[i:i+left_frames], axis=0)
+            img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames], axis=0)
             
             img_diff = img_stim-img_base
-            img_mask = img_diff >= np.max(np.abs(img_diff)) * insertions_threshold
+            img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
 
             der_img.append(img_diff)
             mask_img.append(img_mask)
@@ -125,9 +125,9 @@ def der_series(viewer: Viewer, img:Image,
 
 
 @magic_factory(call_button='Build Up Mask',
-               insertions_threshold={"widget_type": "FloatSlider", 'max': 1},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+               insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
 def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
-                 insertions_threshold:float=0.2,
+                 insertion_threshold:float=0.2,
                  save_mask:bool=False):
     if input is not None:
         if img.data.ndim != 3:
@@ -135,7 +135,7 @@ def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
         input_img = img.data
         detection_img = input_img[detection_img_index]
         
-        up_mask = detection_img >= np.max(np.abs(detection_img)) * insertions_threshold
+        up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
         up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
         up_mask = ndi.binary_fill_holes(up_mask)
         up_mask = up_mask.astype(int)
