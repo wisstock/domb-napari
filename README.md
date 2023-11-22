@@ -1,4 +1,5 @@
-DoMB Tools for napari
-=====================
+domb-napari
+===========
+## DoMB Tools for napari
 
-Implementation of the [DoMB tools](domb.bio) package as [napari](napari.org) plugin.
+Implementation of the [DoMB tools](https://domb.bio/) package as plugin for [napari](https://napari.org/).

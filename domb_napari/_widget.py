@@ -289,5 +289,3 @@ if __name__ == '__main__':
     labels_profile_widget = labels_profile_stat()
     viewer.window.add_dock_widget(labels_profile_widget, name='Labels Profile',
                                   area='right')
-    
-# https://forum.image.sc/t/napari-auto-updating-dock-widget-min-max-properties-made-with-magicgui/40985/2
