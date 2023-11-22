@@ -1,6 +1,6 @@
 domb-napari
 ===========
-## DoMB tools for napari
+## DoMB Tools for napari
 
 Implementation of the [DoMB Tools](https://domb.bio/) package as plugin for [napari](https://napari.org/).
 
@@ -8,7 +8,7 @@ A Napari plugin offers widgets to analyze fluorescence-labeled proteins redistri
 
 _Currently, the plugin lacks test coverage!_
 
-![raw](images/translocation.gif)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
 ## Widgets
@@ -18,7 +18,7 @@ Provides functions for preprocessing multi-channel fluorescence acquisitions:
 - If the `gaussian blur` option is selected, the image will be blurred with a Gaussian filter using sigma=`gaussian sigma`.
 - If the `photobleaching correction` option is selected, the image will undergo correction with exponential (method `exp`) or bi-exponential (method `bi_exp`) fitting.
 
-![raw](images/pic_0.png)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/pic_0.png)
 
 ### Red-Green Series
 Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` siffix.
@@ -29,7 +29,7 @@ Parameters:
 - `right frames` - number of subsequent frames for pixel-wise averaging.
 - `save mask series` - if selected, a series of labels will be created for each frame of the differential image with the threshold `insertion threshold`.
 
-![raw](images/pic_1.png)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/pic_1.png)
 
 ### Up Mask
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` siffix.
@@ -39,7 +39,7 @@ Parameters:
 - `insertion threshold` - threshold value for insertion site detection, intensity on selected `_red-green` frame normalized in -1 - 0 range.
 - `save mask` - if selected, a total up mask (containing all ROIs) will be created with the `_up-mask` suffix.
 
-![raw](images/pic_2.png)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/pic_2.png)
 
 ### Individual Labels Profiles
 Builds a plot with mean intensity profiles for each ROI in `labels` using absolute intensity (if `raw intensity` is selected) or relative intensities (ΔF/F0).
@@ -52,7 +52,7 @@ Filters ROIs by minimum (`min amplitude`) and maximum (`max amplitude`) intensit
 
 _Note: Intensity filtering is most relevant for ΔF/F0 profiles._
 
-![raw](images/pic_3.png)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/pic_3.png)
 
 ### Labels Profile
 Builds a plot with the averaged intensity of all ROIs in `labels`. Can take two images (`img 0` and `img 1`) as input if `two profiles` are selected.
@@ -64,4 +64,4 @@ The `stat method` provides methods for calculating intensity errors:
 - `iqr` - interquartile range.
 - `ci` - 95% confidence interval for t-distribution.
 
-![raw](images/pic_4.png)
+![raw](https://github.com/wisstock/domb-napari/blob/master/images/pic_4.png)
