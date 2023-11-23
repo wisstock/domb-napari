@@ -7,6 +7,9 @@ from napari import Viewer
 from napari.types import LabelsData, ImageData
 from napari.layers import Image, Points, Labels
 
+import pathlib
+import os
+
 import numpy as np
 from scipy import ndimage as ndi
 from scipy import stats
@@ -35,13 +38,14 @@ def split_channels(viewer: Viewer, img:Image,
             print(f'{img.name}: Split and preprocessing mode')
             for i in range(img.data.shape[1]):
                 ch_name = img.name + f'_ch{i}'
-                ch_img = img.data[:,i,:,:]
+                ch_img = img.data[:,i,:,:].astype(float)
+                corr_img = np.mean(ch_img, axis=0)
+                corr_mask = corr_img > filters.threshold_otsu(corr_img)
+                corr_mask = morphology.dilation(corr_mask, footprint=morphology.disk(10))
                 if gaussian_blur:
                     ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
                     print(f'{ch_name}: Img series blured with sigma {gaussian_sigma}')
                 if photobleaching_correction:
-                    corr_img = np.mean(ch_img, axis=0)
-                    corr_mask = corr_img > filters.threshold_otsu(corr_img)
                     ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img,
                                                                 mask=corr_mask,
                                                                 method=correction_method)
@@ -156,46 +160,107 @@ def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
                 viewer.add_labels(up_mask, name=mask_name,
                                 num_colors=1, color={1:(255,0,0,255)},
                                 opacity=0.6)
+                
+
+# @magic_factory(call_button='Build Down Mask',
+#                insertion_threshold={"widget_type": "FloatSlider", 'max': 0, 'min': -0.75},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+# def down_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
+#                    insertion_threshold:float=-0.2,
+#                    save_mask:bool=False):
+#     if input is not None:
+#         if img.data.ndim != 3:
+#             raise ValueError('The input image should have 2 dimensions!')
+#         input_img = img.data
+#         detection_img = input_img[detection_img_index]
+        
+#         up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
+#         up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
+#         up_mask = ndi.binary_fill_holes(up_mask)
+#         up_mask = up_mask.astype(int)
+#         up_labels = measure.label(up_mask)
+#         print(f'Up mask shape: {up_mask.shape}, detected {np.max(up_labels)} labels')
+            
+#         labels_name = img.name + '_down-labels'
+#         try:
+#             viewer.layers[labels_name].data = up_labels
+#         except KeyError:
+#             viewer.add_labels(up_labels, name=labels_name, opacity=0.6)
+
+#         if save_mask:
+#             mask_name = img.name + '_down-mask'
+#             try:
+#                 viewer.layers[mask_name].data = up_mask
+#             except KeyError:
+#                 viewer.add_labels(up_mask, name=mask_name,
+#                                 num_colors=1, color={1:(255,0,0,255)},
+#                                 opacity=0.6)
 
 
-@magic_factory(call_button='Build Set Labels Profiles',)
+@magic_factory(call_button='Build Set Labels Profiles',
+               saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=2.0,
                         raw_intensity:bool=False,
                         ΔF_win:int=5,
                         min_amplitude:float=0.0,
-                        max_amplitude:float=5.0):
+                        max_amplitude:float=5.0,
+                        save_data_frame:bool=False,
+                        saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         input_img = img.data
         input_labels = labels.data
+        df_name = img.name + '_lab_prof'
 
         profile_dF, profile_raw = masking.label_prof_arr(input_label=input_labels,
                                                          input_img_series=input_img,
                                                          f0_win=ΔF_win)
+        time_line = np.linspace(0, input_img.shape[0]*time_scale, \
+                                num=input_img.shape[0])
+
         if raw_intensity:
             profile_to_plot = profile_raw
             ylab = 'Intensity, a.u.'
+            df_name = df_name + '_raw'
         else:
             profile_to_plot = profile_dF
             ylab = 'ΔF/F0'
+            df_name = df_name + '_dF'
 
-        # plotting
-        time_line = np.linspace(0, input_img.shape[0]*time_scale, \
-                                num=input_img.shape[0])
-        
+        if save_data_frame:
+            import pandas as pd
+            output_df = pd.DataFrame(columns=['id','roi','int', 'time'])
+            for num_ROI in range(profile_to_plot.shape[0]):
+                profile_ROI = profile_to_plot[num_ROI]
+                df_ROI = pd.DataFrame({'id':np.full(profile_ROI.shape[0], img.name),
+                                       'roi':np.full(profile_ROI.shape[0], num_ROI+1),
+                                       'int':profile_ROI,
+                                       'time':time_line})
+                output_df = pd.concat([output_df.astype(df_ROI.dtypes),
+                                       df_ROI.astype(output_df.dtypes)],
+                                      ignore_index=True)
+            output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
+
+        # plotting        
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         for num_ROI in range(profile_to_plot.shape[0]):
             profile_ROI = profile_to_plot[num_ROI]
-            if (profile_ROI.max() < min_amplitude) | (profile_ROI.max() > max_amplitude):
-                continue
-            else:
+            if raw_intensity:
                 ax.plot(time_line, profile_ROI,
                          alpha=0.35, marker='o')
+                plt_title = f'{img.name} individual labels raw profiles'
+            elif (profile_ROI.max() > min_amplitude) | (profile_ROI.max() < max_amplitude):
+                ax.plot(time_line, profile_ROI,
+                         alpha=0.35, marker='o')
+                plt_title = f'{img.name} individual labels profiles (min={min_amplitude}, max={max_amplitude})'
+            else:
+                continue
         ax.grid(color='grey', linewidth=.25)
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
-        plt.title(f'{img.name} individual labels profiles (min={max_amplitude}, max={min_amplitude})')
+        plt.title(plt_title)
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img.name} Profile')
 
 
@@ -242,29 +307,30 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                                 num=input_img_0.shape[0])
         
         mpl_fig = plt.figure()
+        ax = mpl_fig.add_subplot(111)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)        
         if two_profiles:
-            ax = mpl_fig.add_subplot(111)
             ax.errorbar(time_line, arr_val_0,
                         yerr = arr_var_0,
-                        fmt ='-o', capsize=2, label=img_0.name)
+                        fmt ='-o', capsize=2, label=img_0.name, alpha=0.75)
             ax.errorbar(time_line, arr_val_1,
                         yerr = arr_var_1,
-                        fmt ='-o', capsize=2, label=img_1.name)
+                        fmt ='-o', capsize=2, label=img_1.name, alpha=0.75)
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Time, s')
             ax.set_ylabel('ΔF/F0')
             plt.legend()
-            plt.title(f'Two up labels profiles (method {stat_method})')
+            plt.title(f'Two labels profiles (method {stat_method})')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Two Profiles')
         else:
-            ax = mpl_fig.add_subplot(111)
             ax.errorbar(time_line, arr_val_0,
                         yerr = arr_var_0,
                         fmt ='-o', capsize=2)
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Time, s')
             ax.set_ylabel('ΔF/F0')
-            plt.title(f'{img_0.name} up labels profile (method {stat_method})')
+            plt.title(f'{img_0.name} labels profile (method {stat_method})')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img_0.name} Profile')
 
 
