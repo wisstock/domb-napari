@@ -1,11 +1,9 @@
-from magicgui import magicgui
 from magicgui import magic_factory
-from magicgui.widgets import FunctionGui
 
 import napari
 from napari import Viewer
-from napari.types import LabelsData, ImageData
-from napari.layers import Image, Points, Labels
+# from napari.types import LabelsData, ImageData
+from napari.layers import Image, Labels
 
 import pathlib
 import os
