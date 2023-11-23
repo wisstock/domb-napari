@@ -2,6 +2,11 @@ domb-napari
 ===========
 ## DoMB Tools for napari
 
+[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
+![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
+![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
+![Website](https://img.shields.io/website?up_message=domb.bio&up_color=%23038C93&url=https%3A%2F%2Fdomb.bio%2F)
+
 Implementation of the [DoMB Tools](https://domb.bio/) package as plugin for [napari](https://napari.org/).
 
 A Napari plugin offers widgets to analyze fluorescence-labeled proteins redistribution in widefield epifluorescence time-lapse acquisitions. Useful for studying calcium-dependent translocation of neuronal calcium sensors, synaptic receptors traffic during long-term plasticity induction, membrane protein tracking, etc.
@@ -21,7 +26,7 @@ Provides functions for preprocessing multi-channel fluorescence acquisitions:
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_0.png)
 
 ### Red-Green Series
-Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` siffix.
+Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` suffix.
 
 Parameters:
 - `left frames` - number of previous frames for pixel-wise averaging.
@@ -32,7 +37,7 @@ Parameters:
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_1.png)
 
 ### Up Mask
-Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` siffix.
+Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
 
 Parameters:
 - `detection img index` - index of the frame from `-red-green` image used for insertion sites detection.
