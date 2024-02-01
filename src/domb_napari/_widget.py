@@ -2,8 +2,8 @@ from magicgui import magic_factory
 
 import napari
 from napari import Viewer
-# from napari.types import LabelsData, ImageData
 from napari.layers import Image, Labels
+from napari.utils.notifications import show_info
 
 import pathlib
 import os
@@ -24,16 +24,26 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 from domb.utils import masking
 
 
+def _save_img(viewer: Viewer, img:np.ndarray, img_name:str):
+    try: 
+        viewer.layers[img_name].data = img
+    except KeyError:
+        viewer.add_image(img, name=img_name, colormap='turbo')
+
+
 @magic_factory(call_button='Preprocess Image',
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
-                   gaussian_blur:bool=False, gaussian_sigma=0.75,
+                   gaussian_blur:bool=False, gaussian_sigma=0.5,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp'):
     if input is not None:
         series_dim = img.data.ndim
         if series_dim == 4:
-            print(f'{img.name}: Split and preprocessing mode')
+            preprocessing_info = f'{img.name}: Ch. split and preprocessing mode'
+            print(preprocessing_info)
+            show_info(preprocessing_info)
+
             for i in range(img.data.shape[1]):
                 ch_name = img.name + f'_ch{i}'
                 ch_img = img.data[:,i,:,:].astype(float)
@@ -48,14 +58,13 @@ def split_channels(viewer: Viewer, img:Image,
                                                                 mask=corr_mask,
                                                                 method=correction_method)
                     print(f'{ch_name}: Photobleaching correction, r^2={r_corr}')
-                try: 
-                    # if the layer exists, update the data
-                    viewer.layers[ch_name].data = ch_img
-                except KeyError:
-                    # otherwise add it to the viewer
-                    viewer.add_image(ch_img, name=ch_name, colormap='turbo')
+
+                _save_img(viewer=viewer, img=ch_img, img_name=ch_name)
         elif series_dim == 3:
-            print(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
+            preprocessing_info = f'{img.name}: Image already has 3 dimensions, preprocessing only mode'
+            print(preprocessing_info)
+            show_info(preprocessing_info)
+            
             ch_name = img.name + '_ch0'
             ch_img = img.data
             if gaussian_blur:
@@ -66,13 +75,34 @@ def split_channels(viewer: Viewer, img:Image,
                 corr_mask = corr_img > filters.threshold_otsu(corr_img)
                 ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img, mask=corr_mask)
                 print(f'{ch_name}: Photobleaching correction, r^2={r_corr}')
-            try: 
-                viewer.layers[ch_name].data = ch_img
-            except KeyError:
-                viewer.add_image(ch_img, name=ch_name, colormap='turbo')
+            _save_img(viewer=viewer, img=ch_img, img_name=ch_name)
         else:
             raise ValueError('The input image should have 4 dimensions!')
         
+
+@magic_factory(call_button='Split SEP')
+def split_sep(viewer: Viewer, img:Image,
+              calc_surface_img:bool=False):
+    if input is not None:
+        series_dim = img.data.ndim
+        if series_dim == 3:
+            sep_img = img.data.astype(float)
+            total_img = sep_img[0::2,:,:]
+            intra_img = sep_img[1::2,:,:]
+
+            total_name = img.name + '_total'
+            intra_name = img.name + '_intra'
+
+            _save_img(viewer=viewer, img=total_img, img_name=total_name)
+            _save_img(viewer=viewer, img=intra_img, img_name=intra_name)
+
+            if calc_surface_img:
+                surface_img = total_img - intra_img
+                surface_name = img.name + '_surface'
+                _save_img(viewer=viewer, img=surface_img, img_name=surface_name)
+        else:
+            raise ValueError('The input image should have 3 dimensions!')
+
 
 @magic_factory(call_button='Calc Red-Green',
                insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)
@@ -120,88 +150,67 @@ def der_series(viewer: Viewer, img:Image,
 
         if save_mask_series:
             mask_name = img.name + '_red-mask'
-            try:
-                viewer.layers[mask_name].data = mask_img
-            except KeyError:
-                viewer.add_image(mask_img, name=mask_name, colormap='red')
+            _save_img(viewer=viewer, img=mask_img, img_name=mask_name)
 
 
-@magic_factory(call_button='Build Up Mask',
-               insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
-def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
-                 insertion_threshold:float=0.2,
-                 save_mask:bool=False):
+@magic_factory(call_button='Build Mask',
+               masking_mode={"choices": ['up', 'down']},
+               up_threshold={"widget_type": "FloatSlider", 'min':0, 'max': 1},
+               down_threshold={"widget_type": "FloatSlider", 'min':-0.5, 'max': 0},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
+              masking_mode:str='up',
+              up_threshold:float=0.2,
+              down_threshold:float=-0.1,
+              save_mask:bool=False):
     if input is not None:
         if img.data.ndim != 3:
-            raise ValueError('The input image should have 2 dimensions!')
+            raise ValueError('The input image should have 3 dimensions!')
         input_img = img.data
-        detection_img = input_img[detection_img_index]
-        
-        up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
-        up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
-        up_mask = ndi.binary_fill_holes(up_mask)
-        up_mask = up_mask.astype(int)
-        up_labels = measure.label(up_mask)
-        print(f'Up mask shape: {up_mask.shape}, detected {np.max(up_labels)} labels')
+        detection_img = input_img[detection_frame_index]
+
+        if masking_mode == 'up':
+            mask = detection_img >= np.max(np.abs(detection_img)) * up_threshold
+            labels_name = img.name + '_up-labels'
+            mask_name = img.name + '_up-mask'
+        elif masking_mode == 'down':        
+            mask = detection_img <= np.max(np.abs(detection_img)) * down_threshold
+            labels_name = img.name + '_down-labels'
+            mask_name = img.name + '_down-mask'
+
+        mask = morphology.opening(mask, footprint=morphology.disk(3))
+        mask = ndi.binary_fill_holes(mask)
+        mask = mask.astype(int)
+        labels = measure.label(mask)
+
+        mask_info = f'{img.name}: detected {np.max(labels)} labels'
+        print(mask_info)
+        show_info(mask_info)
             
-        labels_name = img.name + '_up-labels'
         try:
-            viewer.layers[labels_name].data = up_labels
+            viewer.layers[labels_name].data = labels
         except KeyError:
-            viewer.add_labels(up_labels, name=labels_name, opacity=0.6)
+            viewer.add_labels(labels, name=labels_name, opacity=0.6)
 
         if save_mask:
-            mask_name = img.name + '_up-mask'
             try:
-                viewer.layers[mask_name].data = up_mask
+                viewer.layers[mask_name].data = mask
             except KeyError:
-                viewer.add_labels(up_mask, name=mask_name,
+                viewer.add_labels(mask, name=mask_name,
                                 num_colors=1, color={1:(255,0,0,255)},
                                 opacity=0.6)
-                
-
-# @magic_factory(call_button='Build Down Mask',
-#                insertion_threshold={"widget_type": "FloatSlider", 'max': 0, 'min': -0.75},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
-# def down_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
-#                    insertion_threshold:float=-0.2,
-#                    save_mask:bool=False):
-#     if input is not None:
-#         if img.data.ndim != 3:
-#             raise ValueError('The input image should have 2 dimensions!')
-#         input_img = img.data
-#         detection_img = input_img[detection_img_index]
-        
-#         up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
-#         up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
-#         up_mask = ndi.binary_fill_holes(up_mask)
-#         up_mask = up_mask.astype(int)
-#         up_labels = measure.label(up_mask)
-#         print(f'Up mask shape: {up_mask.shape}, detected {np.max(up_labels)} labels')
-            
-#         labels_name = img.name + '_down-labels'
-#         try:
-#             viewer.layers[labels_name].data = up_labels
-#         except KeyError:
-#             viewer.add_labels(up_labels, name=labels_name, opacity=0.6)
-
-#         if save_mask:
-#             mask_name = img.name + '_down-mask'
-#             try:
-#                 viewer.layers[mask_name].data = up_mask
-#             except KeyError:
-#                 viewer.add_labels(up_mask, name=mask_name,
-#                                 num_colors=1, color={1:(255,0,0,255)},
-#                                 opacity=0.6)
 
 
 @magic_factory(call_button='Build Set Labels Profiles',
                saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=2.0,
-                        raw_intensity:bool=False,
+                        raw_intensity:bool=True,
                         ΔF_win:int=5,
                         min_amplitude:float=0.0,
                         max_amplitude:float=5.0,
+                        frame_crop:bool=False,
+                        start_frame:int=0,
+                        stop_frame:int=10,
                         save_data_frame:bool=False,
                         saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
@@ -214,6 +223,11 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                                          f0_win=ΔF_win)
         time_line = np.linspace(0, input_img.shape[0]*time_scale, \
                                 num=input_img.shape[0])
+
+        if frame_crop:
+            profile_dF = profile_dF[start_frame:stop_frame] 
+            profile_raw = profile_raw[start_frame:stop_frame]
+            time_line = time_line[start_frame:stop_frame]
 
         if raw_intensity:
             profile_to_plot = profile_raw

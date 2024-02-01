@@ -2,14 +2,17 @@ name: domb-napari
 contributions:
   commands:
     - id: domb-napari.split_channels_widget
-      title: Image Preprocessing
+      title: Multichannel Image Preprocessing
       python_name: domb_napari._widget:split_channels
+    - id: domb-napari.split_sep_widget
+      title: SEP Image Preprocessing
+      python_name: domb_napari._widget:split_sep
     - id: domb-napari.der_series_widget
       title: Red-Green Series
       python_name: domb_napari._widget:der_series
-    - id: domb-napari.up_mask_calc_widget
-      title: Up Mask
-      python_name: domb_napari._widget:up_mask_calc
+    - id: domb-napari.mask_calc_widget
+      title: Intensity Masking
+      python_name: domb_napari._widget:mask_calc
     - id: domb-napari.labels_profiles_set_widget
       title: Individual Labels Profiles
       python_name: domb_napari._widget:labels_profile_line
@@ -19,10 +22,12 @@ contributions:
   widgets:
     - command: domb-napari.split_channels_widget
       display_name: Image Preprocessing
+    - command: domb-napari.split_sep_widget
+      display_name: SEP Preprocessing
     - command: domb-napari.der_series_widget
       display_name: Red-Green Series
-    - command: domb-napari.up_mask_calc_widget
-      display_name: Up Mask
+    - command: domb-napari.mask_calc_widget
+      display_name: Intensity Masking
     - command: domb-napari.labels_profiles_set_widget
       display_name: Individual Labels Profiles
     - command: domb-napari.labels_profile_widget
