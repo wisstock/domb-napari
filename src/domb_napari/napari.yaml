@@ -19,6 +19,9 @@ contributions:
     - id: domb-napari.labels_profile_widget
       title: Labels Profile
       python_name: domb_napari._widget:labels_profile_stat
+    - id: domb-napari.read_oib
+      title: Read ".oib" files
+      python_name: domb_napari._reader:get_reader
   widgets:
     - command: domb-napari.split_channels_widget
       display_name: Image Preprocessing
@@ -32,3 +35,7 @@ contributions:
       display_name: Individual Labels Profiles
     - command: domb-napari.labels_profile_widget
       display_name: Labels Profile
+  readers:
+  - command: domb-napari.read_oib
+    filename_patterns:
+    - '*.oib'
