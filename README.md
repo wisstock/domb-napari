@@ -7,7 +7,9 @@ domb-napari
 ![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
 ![Website](https://img.shields.io/website?up_message=domb.bio%2Fnapari&up_color=%2323038C93&url=https%3A%2F%2Fdomb.bio%2Fnapari%2F)
 
-A napari plugin offers widgets to analyze fluorescence-labeled proteins redistribution in widefield epifluorescence time-lapse acquisitions. Useful for studying calcium-dependent translocation of neuronal calcium sensors, synaptic receptors traffic during long-term plasticity induction, membrane protein tracking, etc.
+napari toolkit of Department of Molecular Biophysics, Bogomoletz Institute of Physiology of NAS of Ukraine, Kyiv.
+
+napari plugin offers widgets to analyze fluorescence-labeled proteins redistribution in widefield epifluorescence time-lapse acquisitions. Useful for studying calcium-dependent translocation of neuronal calcium sensors, synaptic receptors traffic during long-term plasticity induction, membrane protein tracking, etc.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
@@ -33,7 +35,7 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_1.png)
 
-### Up Mask
+### Up Masking
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
 
 Parameters:
@@ -44,7 +46,7 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_2.png)
 
-### Individual Labels Profiles
+### Individual Labels Profile
 Builds a plot with mean intensity profiles for each ROI in `labels` using absolute intensity (if `raw intensity` is selected) or relative intensities (ΔF/F0).
 
 The `time scale` sets the number of seconds between frames for x-axis scaling.

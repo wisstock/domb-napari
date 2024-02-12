@@ -118,8 +118,8 @@ def der_series(viewer: Viewer, img:Image,
         der_img = []
         mask_img = []
         for i in range(ref_img.shape[0]-(left_frames+right_frames+space_frames)):
-            img_base = np.mean(ref_img[i:i+left_frames], axis=0)
-            img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames], axis=0)
+            img_base = np.mean(ref_img[i:i+left_frames+1], axis=0)
+            img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames+1], axis=0)
             
             img_diff = img_stim-img_base
             img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
@@ -153,15 +153,46 @@ def der_series(viewer: Viewer, img:Image,
             _save_img(viewer=viewer, img=mask_img, img_name=mask_name)
 
 
+@magic_factory(call_button='Build Up Mask',
+               insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
+                 insertion_threshold:float=0.2,
+                 save_mask:bool=False):
+    if input is not None:
+        if img.data.ndim != 3:
+            raise ValueError('The input image should have 2 dimensions!')
+        input_img = img.data
+        detection_img = input_img[detection_img_index]
+        
+        up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
+        up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
+        up_mask = ndi.binary_fill_holes(up_mask)
+        up_mask = up_mask.astype(int)
+        up_labels = measure.label(up_mask)
+        print(f'Up mask shape: {up_mask.shape}, detected {np.max(up_labels)} labels')
+            
+        labels_name = img.name + '_up-labels'
+        try:
+            viewer.layers[labels_name].data = up_labels
+        except KeyError:
+            viewer.add_labels(up_labels, name=labels_name, opacity=0.6)
+
+        if save_mask:
+            mask_name = img.name + '_up-mask'
+            try:
+                viewer.layers[mask_name].data = up_mask
+            except KeyError:
+                viewer.add_labels(up_mask, name=mask_name,
+                                num_colors=1, color={1:(255,0,0,255)},
+                                opacity=0.6)
+
+
 @magic_factory(call_button='Build Mask',
-               masking_mode={"choices": ['up', 'down']},
-               up_threshold={"widget_type": "FloatSlider", 'min':0, 'max': 1},
-               down_threshold={"widget_type": "FloatSlider", 'min':-0.5, 'max': 0},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+               masking_mode={"choices": ['up', 'down']},)
 def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
               masking_mode:str='up',
               up_threshold:float=0.2,
-              down_threshold:float=-0.1,
-              save_mask:bool=False):
+              down_threshold:float=-0.1):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
@@ -200,7 +231,7 @@ def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
                                 opacity=0.6)
 
 
-@magic_factory(call_button='Build Set Labels Profiles',
+@magic_factory(call_button='Build Profiles',
                saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=2.0,
@@ -276,7 +307,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img.name} Profile')
 
 
-@magic_factory(call_button='Build Labels Profile',
+@magic_factory(call_button='Build Profile',
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                         two_profiles:bool=False, 
@@ -354,16 +385,4 @@ if __name__ == '__main__':
 
     split_channels_widget = split_channels()
     viewer.window.add_dock_widget(split_channels_widget, name = 'Preprocessing',
-                                area='right')  # add_vertical_stretch=True
-
-    der_series_widget = der_series()
-    viewer.window.add_dock_widget(der_series_widget, name = 'Red-Green Series',
                                 area='right')
-
-    up_mask_calc_widget = up_mask_calc()
-    viewer.window.add_dock_widget(up_mask_calc_widget, name='Up Mask',
-                                area='right')
-
-    labels_profile_widget = labels_profile_stat()
-    viewer.window.add_dock_widget(labels_profile_widget, name='Labels Profile',
-                                  area='right')
