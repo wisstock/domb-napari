@@ -1,6 +1,8 @@
 domb-napari
 ===========
 
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct.svg)](https://vshymanskyy.github.io/StandWithUkraine/)
+
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
 ![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
@@ -8,13 +10,17 @@ domb-napari
 
 __napari Toolkit of Department of Molecular Biophysics <br /> Bogomoletz Institute of Physiology of NAS of Ukraine, Kyiv,  Ukraine__
 
-napari plugin offers widgets to analyze fluorescence-labeled proteins redistribution in widefield epifluorescence time-lapse acquisitions. Useful for studying calcium-dependent translocation of neuronal calcium sensors, synaptic receptors traffic during long-term plasticity induction, membrane protein tracking, etc.
+napari plugin for analyzing fluorescence-labeled proteins redistribution. Offers widgets designed for analyzing the redistribution of fluorescence-labeled proteins in widefield epifluorescence time-lapse acquisitions. Particularly useful for studying various phenomena such as calcium-dependent translocation of neuronal calcium sensors, synaptic receptor traffic during long-term plasticity induction, and membrane protein tracking.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
-## Widgets
-### Image Preprocessing
+# Detection of fluorescence redistributions
+A set of widgets designed for detecting fluorescence intensity redistribution through the analysis of differential image series (red-green detection).
+
+Inspired by [Dovgan et al., 2010](https://pubmed.ncbi.nlm.nih.gov/20704590/) and [Osypenko et al., 2019](https://www.sciencedirect.com/science/article/pii/S0969996119301974?via%3Dihub).
+
+## Image preprocessing
 Provides functions for preprocessing multi-channel fluorescence acquisitions:
 - If the input image has 4 dimensions (time, channel, x-axis, y-axis), channels will be split into individual 3 dimensions images (time, x-axis, y-axis) with the `_ch%index%` suffix.
 - If the `gaussian blur` option is selected, the image will be blurred with a Gaussian filter using sigma=`gaussian sigma`.
@@ -22,7 +28,7 @@ Provides functions for preprocessing multi-channel fluorescence acquisitions:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_0.png)
 
-### Red-Green Series
+## Red-green series
 Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` suffix.
 
 Parameters:
@@ -34,7 +40,7 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_1.png)
 
-### Up Masking
+## Up masking
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
 
 Parameters:
@@ -45,7 +51,11 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_2.png)
 
-### Individual Labels Profile
+## Intensity masking
+Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
+
+
+## Individual labels profiles
 Builds a plot with mean intensity profiles for each ROI in `labels` using absolute intensity (if `raw intensity` is selected) or relative intensities (ΔF/F0).
 
 The `time scale` sets the number of seconds between frames for x-axis scaling.
@@ -61,13 +71,14 @@ Additionally, you can save ROI intensity profiles as .csv using the `save data f
 - __id__ - unique image ID, the name of the input `napari.Image` object.
 - __roi__ - ROI number, consecutively numbered starting from 1.
 - __int__ - ROI mean intensity, raw or ΔF/F0 according to the `raw intensity` option.
+- __index__ - frame index
 - __time__ - frame time point according to the `time scale`.
 
 _Note: The data frame will contain information for all ROIs; filtering options pertain to plotting only._
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_3.png)
 
-### Labels Profile
+## Labels profile
 Builds a plot with the averaged intensity of all ROIs in `labels`. Can take two images (`img 0` and `img 1`) as input if `two profiles` are selected.
 
 The `time scale` and `ΔF win` are the same as in the __Individual Labels Profiles__.
@@ -79,3 +90,13 @@ The `stat method` provides methods for calculating intensity errors:
 - `ci` - 95% confidence interval for t-distribution.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_4.png)
+
+# Traffic monitoring with pH-sensitive tag
+A collection of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
+
+Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/), [Gao et al., 2018](https://www.beilstein-journals.org/bjnano/articles/9/79) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
+
+## SEP image preprocessing
+Processes image series obtained through repetitive pH exchange methods (such as U-tube or ppH approaches). Frames with odd indexes, including index 0, are interpreted as images acquired at pH 7.0, representing total fluorescence intensity (saved with the suffix `_total`). Even frames are interpreted as images obtained at acidic pH (5.5-6.0), representing intracellular fluorescence only (saved with the suffix `_intra`).
+
+If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`).

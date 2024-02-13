@@ -202,11 +202,11 @@ def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
         if masking_mode == 'up':
             mask = detection_img >= np.max(np.abs(detection_img)) * up_threshold
             labels_name = img.name + '_up-labels'
-            mask_name = img.name + '_up-mask'
+            # mask_name = img.name + '_up-mask'
         elif masking_mode == 'down':        
             mask = detection_img <= np.max(np.abs(detection_img)) * down_threshold
             labels_name = img.name + '_down-labels'
-            mask_name = img.name + '_down-mask'
+            # mask_name = img.name + '_down-mask'
 
         mask = morphology.opening(mask, footprint=morphology.disk(3))
         mask = ndi.binary_fill_holes(mask)
@@ -271,12 +271,13 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
 
         if save_data_frame:
             import pandas as pd
-            output_df = pd.DataFrame(columns=['id','roi','int', 'time'])
+            output_df = pd.DataFrame(columns=['id','roi','int', 'index', 'time'])
             for num_ROI in range(profile_to_plot.shape[0]):
                 profile_ROI = profile_to_plot[num_ROI]
                 df_ROI = pd.DataFrame({'id':np.full(profile_ROI.shape[0], img.name),
                                        'roi':np.full(profile_ROI.shape[0], num_ROI+1),
                                        'int':profile_ROI,
+                                       'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
                                        'time':time_line})
                 output_df = pd.concat([output_df.astype(df_ROI.dtypes),
                                        df_ROI.astype(output_df.dtypes)],
