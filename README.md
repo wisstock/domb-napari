@@ -1,7 +1,7 @@
 domb-napari
 ===========
 
-[![SWUbanner]][SWUdocs]
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://vshymanskyy.github.io/StandWithUkraine/)
 
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
