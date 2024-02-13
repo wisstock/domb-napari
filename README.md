@@ -1,6 +1,8 @@
 domb-napari
 ===========
 
+[![SWUbanner]][SWUdocs]
+
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
 ![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
