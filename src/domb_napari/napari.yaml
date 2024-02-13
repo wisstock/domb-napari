@@ -2,38 +2,38 @@ name: domb-napari
 contributions:
   commands:
     - id: domb-napari.split_channels_widget
-      title: Multichannel Image Preprocessing
+      title: Multichannel image preprocessing
       python_name: domb_napari._widget:split_channels
     - id: domb-napari.split_sep_widget
-      title: SEP Image Preprocessing
+      title: SEP image preprocessing
       python_name: domb_napari._widget:split_sep
     - id: domb-napari.der_series_widget
-      title: Red-Green Series
+      title: Red-green series
       python_name: domb_napari._widget:der_series
     - id: domb-napari.up_mask_calc_widget
-      title: Up Masking
+      title: Up masking
       python_name: domb_napari._widget:up_mask_calc
     - id: domb-napari.mask_calc_widget
-      title: Intensity Masking
+      title: Intensity masking
       python_name: domb_napari._widget:mask_calc
     - id: domb-napari.labels_profiles_set_widget
-      title: Individual Labels Profiles
+      title: Individual labels profiles
       python_name: domb_napari._widget:labels_profile_line
     - id: domb-napari.labels_profile_widget
-      title: Labels Profile
+      title: Labels profile
       python_name: domb_napari._widget:labels_profile_stat
   widgets:
     - command: domb-napari.split_channels_widget
-      display_name: Image Preprocessing
+      display_name: Image preprocessing
     - command: domb-napari.der_series_widget
-      display_name: Red-Green Series
+      display_name: Red-green series
     - command: domb-napari.split_sep_widget
-      display_name: SEP Preprocessing
+      display_name: SEP preprocessing
     - command: domb-napari.up_mask_calc_widget
-      display_name: Up Mask
+      display_name: Up masking
     - command: domb-napari.mask_calc_widget
-      display_name: Intensity Masking
+      display_name: Intensity masking
     - command: domb-napari.labels_profiles_set_widget
-      display_name: Individual Labels Profile
+      display_name: Individual labels profiles
     - command: domb-napari.labels_profile_widget
-      display_name: Labels Profile
+      display_name: Labels profile
