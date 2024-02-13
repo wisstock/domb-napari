@@ -99,4 +99,4 @@ Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/), [Ga
 ## SEP image preprocessing
 Processes image series obtained through repetitive pH exchange methods (such as U-tube or ppH approaches). Frames with odd indexes, including index 0, are interpreted as images acquired at pH 7.0, representing total fluorescence intensity (saved with the suffix `_total`). Even frames are interpreted as images obtained at acidic pH (5.5-6.0), representing intracellular fluorescence only (saved with the suffix `_intra`).
 
-If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`).
+If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`). The input image should be a 3-dimensional single-channel time-lapse.
