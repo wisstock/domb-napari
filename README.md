@@ -1,13 +1,12 @@
 domb-napari
 ===========
-## DoMB Tools for napari
 
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
 ![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
 ![Website](https://img.shields.io/website?up_message=domb.bio%2Fnapari&up_color=%2323038C93&url=https%3A%2F%2Fdomb.bio%2Fnapari%2F)
 
-napari toolkit of Department of Molecular Biophysics, Bogomoletz Institute of Physiology of NAS of Ukraine, Kyiv.
+__napari Toolkit of Department of Molecular Biophysics <br /> Bogomoletz Institute of Physiology of NAS of Ukraine, Kyiv,  Ukraine__
 
 napari plugin offers widgets to analyze fluorescence-labeled proteins redistribution in widefield epifluorescence time-lapse acquisitions. Useful for studying calcium-dependent translocation of neuronal calcium sensors, synaptic receptors traffic during long-term plasticity induction, membrane protein tracking, etc.
 
