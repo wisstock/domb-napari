@@ -24,17 +24,34 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 from domb.utils import masking
 
 
-def _save_img(viewer: Viewer, img:np.ndarray, img_name:str):
+def _save_img(viewer: Viewer, img:np.ndarray, img_name:str, cmap_rg=False):
     try: 
         viewer.layers[img_name].data = img
     except KeyError:
-        viewer.add_image(img, name=img_name, colormap='turbo')
+        new_image = viewer.add_image(img, name=img_name, colormap='turbo')
+        if cmap_rg:
+            new_image.colormap = 'red-green', _red_green()
+        else:
+            new_image.colormap = 'turbo'
+
+
+def _red_green():
+     """ Red-green colormap
+
+     """
+     return vispy.color.Colormap([[0.0, 1.0, 0.0],
+                                  [0.0, 0.9, 0.0],
+                                  [0.0, 0.5, 0.0],
+                                  [0.0, 0.0, 0.0],
+                                  [0.5, 0.0, 0.0],
+                                  [0.9, 0.0, 0.0],
+                                  [1.0, 0.0, 0.0]])
 
 
 @magic_factory(call_button='Preprocess Image',
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
-                   gaussian_blur:bool=False, gaussian_sigma=0.5,
+                   gaussian_blur:bool=False, gaussian_sigma=0.75,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp'):
     if input is not None:
@@ -82,7 +99,8 @@ def split_channels(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Split SEP')
 def split_sep(viewer: Viewer, img:Image,
-              calc_surface_img:bool=False):
+              calc_surface_img:bool=False,
+              calc_projections:bool=False):
     if input is not None:
         series_dim = img.data.ndim
         if series_dim == 3:
@@ -96,10 +114,27 @@ def split_sep(viewer: Viewer, img:Image,
             _save_img(viewer=viewer, img=total_img, img_name=total_name)
             _save_img(viewer=viewer, img=intra_img, img_name=intra_name)
 
+            projections_diff = lambda x: np.max(x, axis=0) - np.mean(x, axis=0)
+            if calc_projections:
+                _save_img(viewer=viewer,
+                          img=projections_diff(total_img),
+                          img_name=img.name + '_total_projection',
+                          cmap_rg=True)
+                _save_img(viewer=viewer,
+                          img=projections_diff(intra_img),
+                          img_name=img.name + '_intra_projection',
+                          cmap_rg=True)
+
             if calc_surface_img:
                 surface_img = total_img - intra_img
                 surface_name = img.name + '_surface'
                 _save_img(viewer=viewer, img=surface_img, img_name=surface_name)
+
+                if calc_projections:
+                    _save_img(viewer=viewer,
+                            img=projections_diff(surface_img),
+                            img_name=img.name + '_surface_projection',
+                            cmap_rg=True)
         else:
             raise ValueError('The input image should have 3 dimensions!')
 
@@ -132,21 +167,13 @@ def der_series(viewer: Viewer, img:Image,
         der_contrast_lim = np.max(np.abs(der_img)) * 0.75
         print(f'Derivate series shape: {der_img.shape}')
 
-        red_green_cmap = vispy.color.Colormap([[0.0, 1.0, 0.0],
-                                               [0.0, 0.9, 0.0],
-                                               [0.0, 0.5, 0.0],
-                                               [0.0, 0.0, 0.0],
-                                               [0.5, 0.0, 0.0],
-                                               [0.9, 0.0, 0.0],
-                                               [1.0, 0.0, 0.0]])
-
         img_name = img.name + '_red-green'
         try:
             viewer.layers[img_name].data = der_img
         except KeyError:
             der_layer = viewer.add_image(der_img, name=img_name,
                                          contrast_limits=[-der_contrast_lim, der_contrast_lim])
-            der_layer.colormap = 'red-green', red_green_cmap
+            der_layer.colormap = 'red-green', _red_green()
 
         if save_mask_series:
             mask_name = img.name + '_red-mask'

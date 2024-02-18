@@ -1,7 +1,7 @@
 domb-napari
 ===========
 
-[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct.svg)](https://vshymanskyy.github.io/StandWithUkraine/)
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct-single.svg)](https://stand-with-ukraine.pp.ua)
 
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
@@ -14,6 +14,8 @@ napari plugin for analyzing fluorescence-labeled proteins redistribution. Offers
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
+
+
 
 # Detection of fluorescence redistributions
 A set of widgets designed for detecting fluorescence intensity redistribution through the analysis of differential image series (red-green detection).
@@ -55,6 +57,20 @@ Parameters:
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
 
+
+# Traffic monitoring with pH-sensitive tag
+A collection of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
+
+Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/), [Gao et al., 2018](https://www.beilstein-journals.org/bjnano/articles/9/79) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
+
+## SEP image preprocessing
+Processes image series obtained through repetitive pH exchange methods (such as U-tube or ppH approaches). Frames with odd indexes, including index 0, are interpreted as images acquired at pH 7.0, representing total fluorescence intensity (saved with the suffix `_total`). Even frames are interpreted as images obtained at acidic pH (5.5-6.0), representing intracellular fluorescence only (saved with the suffix `_intra`).
+
+If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`). The input image should be a 3-dimensional single-channel time-lapse.
+
+
+
+# Intensty profiles and output saving
 ## Individual labels profiles
 Builds a plot with mean intensity profiles for each ROI in `labels` using absolute intensity (if `raw intensity` is selected) or relative intensities (ΔF/F0).
 
@@ -90,13 +106,3 @@ The `stat method` provides methods for calculating intensity errors:
 - `ci` - 95% confidence interval for t-distribution.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_4.png)
-
-# Traffic monitoring with pH-sensitive tag
-A collection of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
-
-Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/), [Gao et al., 2018](https://www.beilstein-journals.org/bjnano/articles/9/79) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
-
-## SEP image preprocessing
-Processes image series obtained through repetitive pH exchange methods (such as U-tube or ppH approaches). Frames with odd indexes, including index 0, are interpreted as images acquired at pH 7.0, representing total fluorescence intensity (saved with the suffix `_total`). Even frames are interpreted as images obtained at acidic pH (5.5-6.0), representing intracellular fluorescence only (saved with the suffix `_intra`).
-
-If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`). The input image should be a 3-dimensional single-channel time-lapse.
