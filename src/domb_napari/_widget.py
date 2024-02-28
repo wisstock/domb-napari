@@ -4,6 +4,7 @@ import napari
 from napari import Viewer
 from napari.layers import Image, Labels
 from napari.utils.notifications import show_info
+from napari.qt.threading import thread_worker
 
 import pathlib
 import os
@@ -15,6 +16,7 @@ from scipy import stats
 from skimage import filters
 from skimage import morphology
 from skimage import measure
+from skimage import restoration
 
 import vispy.color
 
@@ -51,90 +53,118 @@ def _red_green():
 @magic_factory(call_button='Preprocess Image',
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
-                   gaussian_blur:bool=False, gaussian_sigma=0.75,
+                   gaussian_blur:bool=True, gaussian_sigma=0.75,
                    photobleaching_correction:bool=False,
-                   correction_method:str='exp'):
+                   correction_method:str='exp',
+                   crop_ch:bool=False,
+                   crop_range:list=[0,10]):
     if input is not None:
-        series_dim = img.data.ndim
-        if series_dim == 4:
-            preprocessing_info = f'{img.name}: Ch. split and preprocessing mode'
-            print(preprocessing_info)
-            show_info(preprocessing_info)
+        def _save_ch(params):
+            img = params[0]
+            img_name = params[1]
+            try: 
+                viewer.layers[img_name].data = img
+            except KeyError:
+                new_image = viewer.add_image(img, name=img_name, colormap='turbo')
 
-            for i in range(img.data.shape[1]):
-                ch_name = img.name + f'_ch{i}'
-                ch_img = img.data[:,i,:,:].astype(float)
+        @thread_worker(connect={'yielded':_save_ch})
+        def _split_channels():
+            def _preprocessing(ch_img):
                 corr_img = np.mean(ch_img, axis=0)
                 corr_mask = corr_img > filters.threshold_otsu(corr_img)
                 corr_mask = morphology.dilation(corr_mask, footprint=morphology.disk(10))
+                if crop_ch:
+                    if len(crop_range) == 2:
+                        ch_img = ch_img[crop_range[0]:crop_range[-1],:,:]
+                    else:
+                        raise ValueError('List of indexes should has 2 elements!')
                 if gaussian_blur:
                     ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
-                    print(f'{ch_name}: Img series blured with sigma {gaussian_sigma}')
+                    show_info(f'Img series blured with sigma {gaussian_sigma}')
                 if photobleaching_correction:
                     ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img,
                                                                 mask=corr_mask,
                                                                 method=correction_method)
-                    print(f'{ch_name}: Photobleaching correction, r^2={r_corr}')
+                    show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
+                return ch_img
 
-                _save_img(viewer=viewer, img=ch_img, img_name=ch_name)
-        elif series_dim == 3:
-            preprocessing_info = f'{img.name}: Image already has 3 dimensions, preprocessing only mode'
-            print(preprocessing_info)
-            show_info(preprocessing_info)
-            
-            ch_name = img.name + '_ch0'
-            ch_img = img.data
-            if gaussian_blur:
-                ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
-                print(f'{ch_name}: Img series blured with sigma {gaussian_sigma}')
-            if photobleaching_correction:
-                corr_img = np.mean(ch_img, axis=0)
-                corr_mask = corr_img > filters.threshold_otsu(corr_img)
-                ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img, mask=corr_mask)
-                print(f'{ch_name}: Photobleaching correction, r^2={r_corr}')
-            _save_img(viewer=viewer, img=ch_img, img_name=ch_name)
-        else:
-            raise ValueError('The input image should have 4 dimensions!')
+            if img.data.ndim == 4:
+                show_info(f'{img.name}: Ch. split and preprocessing mode')
+                for i in range(img.data.shape[1]):
+                    show_info(f'{img.name}: Ch. {i} preprocessing')
+                    yield (_preprocessing(ch_img=img.data[:,i,:,:]), img.name + f'_ch{i}')
+            elif img.data.ndim == 3:
+                show_info(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
+                yield (_preprocessing(ch_img=img.data), img.name + '_ch0')
+            else:
+                raise ValueError('Input image should have 3 or 4 dimensions!')       
         
+        _split_channels()
 
-@magic_factory(call_button='Split SEP')
+
+@magic_factory(call_button='Split SEP',
+               pH_1st_frame={"choices": ['7.3', '6.0']},)
 def split_sep(viewer: Viewer, img:Image,
+              pH_1st_frame:str='7.3',
               calc_surface_img:bool=False,
               calc_projections:bool=False):
     if input is not None:
-        series_dim = img.data.ndim
-        if series_dim == 3:
-            sep_img = img.data.astype(float)
-            total_img = sep_img[0::2,:,:]
-            intra_img = sep_img[1::2,:,:]
+        if img.data.ndim == 3:
 
-            total_name = img.name + '_total'
-            intra_name = img.name + '_intra'
+            def _save_sep(params):
+                img = params[0]
+                img_name = params[1]
+                cmap_rg = False
+                if len(params) == 3:
+                    cmap_rg = params[2]
+                try: 
+                    viewer.layers[img_name].data = img
+                except KeyError:
+                    new_image = viewer.add_image(img, name=img_name, colormap='turbo')
+                    if cmap_rg:
+                        new_image.colormap = 'red-green', _red_green()
+                    else:
+                        new_image.colormap = 'turbo'
 
-            _save_img(viewer=viewer, img=total_img, img_name=total_name)
-            _save_img(viewer=viewer, img=intra_img, img_name=intra_name)
+            @thread_worker(connect={'yielded':_save_sep})
+            def _split_sep():
+                sep_img = img.data.astype(float)
 
-            projections_diff = lambda x: np.max(x, axis=0) - np.mean(x, axis=0)
-            if calc_projections:
-                _save_img(viewer=viewer,
-                          img=projections_diff(total_img),
-                          img_name=img.name + '_total_projection',
-                          cmap_rg=True)
-                _save_img(viewer=viewer,
-                          img=projections_diff(intra_img),
-                          img_name=img.name + '_intra_projection',
-                          cmap_rg=True)
+                if pH_1st_frame == '7.3':
+                    total_start_i, intra_start_i = 0, 1
+                elif pH_1st_frame == '6.0':
+                    total_start_i, intra_start_i = 1, 0
 
-            if calc_surface_img:
-                surface_img = total_img - intra_img
-                surface_name = img.name + '_surface'
-                _save_img(viewer=viewer, img=surface_img, img_name=surface_name)
+                total_img = sep_img[total_start_i::2,:,:]  # 0
+                intra_img = sep_img[intra_start_i::2,:,:]  # 1
+
+                total_name = img.name + '_total'
+                intra_name = img.name + '_intra'
+
+                yield (total_img, total_name)
+                yield (intra_img, intra_name)
 
                 if calc_projections:
-                    _save_img(viewer=viewer,
-                            img=projections_diff(surface_img),
-                            img_name=img.name + '_surface_projection',
-                            cmap_rg=True)
+                    projections_diff = lambda x: np.max(x, axis=0) - np.mean(x, axis=0)
+                    yield (projections_diff(total_img),
+                           img.name + '_total-projection',
+                           True)
+                    yield (projections_diff(intra_img),
+                           img.name + '_intra-projection',
+                           True)
+                    yield (np.max(intra_img, axis=0),
+                           img.name + '_intra-mip')
+
+                if calc_surface_img:
+                    surface_img = total_img - intra_img
+                    yield (surface_img,
+                           img.name + '_surface')
+                    if calc_projections:
+                        yield (projections_diff(surface_img),
+                               img.name + '_surface-projection',
+                               True)
+            
+            _split_sep()
         else:
             raise ValueError('The input image should have 3 dimensions!')
 
@@ -283,16 +313,20 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                 num=input_img.shape[0])
 
         if frame_crop:
-            profile_dF = profile_dF[start_frame:stop_frame] 
-            profile_raw = profile_raw[start_frame:stop_frame]
-            time_line = time_line[start_frame:stop_frame]
+            profile_dF_fin = profile_dF[start_frame:stop_frame] 
+            profile_raw_fin = profile_raw[start_frame:stop_frame]
+            time_line_fin = time_line[start_frame:stop_frame]
+        else:
+            profile_dF_fin = np.copy(profile_dF)
+            profile_raw_fin = np.copy(profile_raw)
+            time_line_fin = np.copy(time_line)
 
         if raw_intensity:
-            profile_to_plot = profile_raw
+            profile_to_plot = profile_raw_fin
             ylab = 'Intensity, a.u.'
             df_name = df_name + '_raw'
         else:
-            profile_to_plot = profile_dF
+            profile_to_plot = profile_dF_fin
             ylab = 'ΔF/F0'
             df_name = df_name + '_dF'
 
@@ -305,7 +339,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                        'roi':np.full(profile_ROI.shape[0], num_ROI+1),
                                        'int':profile_ROI,
                                        'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
-                                       'time':time_line})
+                                       'time':time_line_fin})
                 output_df = pd.concat([output_df.astype(df_ROI.dtypes),
                                        df_ROI.astype(output_df.dtypes)],
                                       ignore_index=True)
@@ -319,11 +353,11 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         for num_ROI in range(profile_to_plot.shape[0]):
             profile_ROI = profile_to_plot[num_ROI]
             if raw_intensity:
-                ax.plot(time_line, profile_ROI,
+                ax.plot(time_line_fin, profile_ROI,
                          alpha=0.35, marker='o')
                 plt_title = f'{img.name} individual labels raw profiles'
             elif (profile_ROI.max() > min_amplitude) | (profile_ROI.max() < max_amplitude):
-                ax.plot(time_line, profile_ROI,
+                ax.plot(time_line_fin, profile_ROI,
                          alpha=0.35, marker='o')
                 plt_title = f'{img.name} individual labels profiles (min={min_amplitude}, max={max_amplitude})'
             else:
