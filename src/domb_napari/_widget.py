@@ -185,14 +185,12 @@ def der_series(viewer: Viewer, img:Image,
                 img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames+1], axis=0)
                 
                 img_diff = img_stim-img_base
-                img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
-
                 der_img.append(img_diff)
+                # img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
                 # mask_img.append(img_mask)
 
             der_img = np.asarray(der_img, dtype=float)
             # mask_img = np.asarray(mask_img, dtype=float)
-
             yield der_img
 
         _der_series()
@@ -333,20 +331,22 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                       ignore_index=True)
             output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
 
-        # plotting        
+        # plotting
+        lab_colors = labels.get_color([prop['label'] for prop in measure.regionprops(label_image=input_labels)])
+
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        for num_ROI in range(profile_to_plot.shape[0]):
-            profile_ROI = profile_to_plot[num_ROI]
+        for num_ROI, color in enumerate(lab_colors):  # range(profile_to_plot.shape[0]):
+            profile_ROI = profile_to_plot.T[num_ROI]
             if raw_intensity:
                 ax.plot(time_line_fin, profile_ROI,
-                         alpha=0.35, marker='o')
+                         alpha=0.35, marker='o', color=color)
                 plt_title = f'{img.name} individual labels raw profiles'
             elif (profile_ROI.max() > min_amplitude) | (profile_ROI.max() < max_amplitude):
                 ax.plot(time_line_fin, profile_ROI,
-                         alpha=0.35, marker='o')
+                         alpha=0.35, marker='o', color=color)
                 plt_title = f'{img.name} individual labels profiles (min={min_amplitude}, max={max_amplitude})'
             else:
                 continue
