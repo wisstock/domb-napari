@@ -26,17 +26,6 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 from domb.utils import masking
 
 
-def _save_img(viewer: Viewer, img:np.ndarray, img_name:str, cmap_rg=False):
-    try: 
-        viewer.layers[img_name].data = img
-    except KeyError:
-        new_image = viewer.add_image(img, name=img_name, colormap='turbo')
-        if cmap_rg:
-            new_image.colormap = 'red-green', _red_green()
-        else:
-            new_image.colormap = 'turbo'
-
-
 def _red_green():
      """ Red-green colormap
 
@@ -169,45 +158,44 @@ def split_sep(viewer: Viewer, img:Image,
             raise ValueError('The input image should have 3 dimensions!')
 
 
-@magic_factory(call_button='Calc Red-Green',
-               insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)
+@magic_factory(call_button='Calc Red-Green')
 def der_series(viewer: Viewer, img:Image,
-               left_frames:int=2, space_frames:int=2, right_frames:int=2,
-               save_mask_series:bool=False,
-               insertion_threshold:float=0.2):
+               left_frames:int=2, space_frames:int=2, right_frames:int=2):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
-        ref_img = img.data
-
-        der_img = []
-        mask_img = []
-        for i in range(ref_img.shape[0]-(left_frames+right_frames+space_frames)):
-            img_base = np.mean(ref_img[i:i+left_frames+1], axis=0)
-            img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames+1], axis=0)
-            
-            img_diff = img_stim-img_base
-            img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
-
-            der_img.append(img_diff)
-            mask_img.append(img_mask)
-
-        der_img = np.asarray(der_img, dtype=float)
-        mask_img = np.asarray(mask_img, dtype=float)
-        der_contrast_lim = np.max(np.abs(der_img)) * 0.75
-        print(f'Derivate series shape: {der_img.shape}')
-
         img_name = img.name + '_red-green'
-        try:
-            viewer.layers[img_name].data = der_img
-        except KeyError:
-            der_layer = viewer.add_image(der_img, name=img_name,
-                                         contrast_limits=[-der_contrast_lim, der_contrast_lim])
-            der_layer.colormap = 'red-green', _red_green()
 
-        if save_mask_series:
-            mask_name = img.name + '_red-mask'
-            _save_img(viewer=viewer, img=mask_img, img_name=mask_name)
+        def _save_rg(img):
+            try: 
+                viewer.layers[img_name].data = img
+            except KeyError:
+                c_lim = np.max(np.abs(img)) * 0.75
+                new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
+                new_image.colormap = 'red-green', _red_green()
+
+        @thread_worker(connect={'yielded':_save_rg})
+        def _der_series():
+            ref_img = img.data
+
+            der_img = []
+            # mask_img = []
+            for i in range(ref_img.shape[0]-(left_frames+right_frames+space_frames)):
+                img_base = np.mean(ref_img[i:i+left_frames+1], axis=0)
+                img_stim = np.mean(ref_img[i+left_frames+right_frames:i+left_frames+right_frames+space_frames+1], axis=0)
+                
+                img_diff = img_stim-img_base
+                img_mask = img_diff >= np.max(np.abs(img_diff)) * insertion_threshold
+
+                der_img.append(img_diff)
+                # mask_img.append(img_mask)
+
+            der_img = np.asarray(der_img, dtype=float)
+            # mask_img = np.asarray(mask_img, dtype=float)
+
+            yield der_img
+
+        _der_series()
 
 
 @magic_factory(call_button='Build Up Mask',
