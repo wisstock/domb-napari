@@ -20,15 +20,15 @@ contributions:
       title: Individual labels profiles
       python_name: domb_napari._widget:labels_profile_line
     - id: domb-napari.labels_profile_widget
-      title: Labels profile
+      title: Labels stat profiles
       python_name: domb_napari._widget:labels_profile_stat
   widgets:
     - command: domb-napari.split_channels_widget
       display_name: Image preprocessing
-    - command: domb-napari.der_series_widget
-      display_name: Red-green series
     - command: domb-napari.split_sep_widget
       display_name: SEP preprocessing
+    - command: domb-napari.der_series_widget
+      display_name: Red-green series
     - command: domb-napari.up_mask_calc_widget
       display_name: Up masking
     - command: domb-napari.mask_calc_widget
@@ -36,4 +36,4 @@ contributions:
     - command: domb-napari.labels_profiles_set_widget
       display_name: Individual labels profiles
     - command: domb-napari.labels_profile_widget
-      display_name: Labels profile
+      display_name: Labels stat profiles

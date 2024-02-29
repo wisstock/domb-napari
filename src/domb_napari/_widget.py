@@ -166,7 +166,7 @@ def der_series(viewer: Viewer, img:Image,
             raise ValueError('The input image should have 3 dimensions!')
         img_name = img.name + '_red-green'
 
-        def _save_rg(img):
+        def _save_rg_img(img):
             try: 
                 viewer.layers[img_name].data = img
             except KeyError:
@@ -174,7 +174,7 @@ def der_series(viewer: Viewer, img:Image,
                 new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
                 new_image.colormap = 'red-green', _red_green()
 
-        @thread_worker(connect={'yielded':_save_rg})
+        @thread_worker(connect={'yielded':_save_rg_img})
         def _der_series():
             ref_img = img.data
 
@@ -200,34 +200,46 @@ def der_series(viewer: Viewer, img:Image,
                insertion_threshold={"widget_type": "FloatSlider", 'max': 1},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
 def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
                  insertion_threshold:float=0.2,
+                 opening_footprint:int=0,
                  save_mask:bool=False):
     if input is not None:
         if img.data.ndim != 3:
-            raise ValueError('The input image should have 2 dimensions!')
-        input_img = img.data
-        detection_img = input_img[detection_img_index]
-        
-        up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
-        up_mask = morphology.opening(up_mask, footprint=morphology.disk(1))
-        up_mask = ndi.binary_fill_holes(up_mask)
-        up_mask = up_mask.astype(int)
-        up_labels = measure.label(up_mask)
-        print(f'Up mask shape: {up_mask.shape}, detected {np.max(up_labels)} labels')
-            
+            raise ValueError('The input image should have 3 dimensions!')
         labels_name = img.name + '_up-labels'
-        try:
-            viewer.layers[labels_name].data = up_labels
-        except KeyError:
-            viewer.add_labels(up_labels, name=labels_name, opacity=0.6)
+        mask_name = img.name + '_up-mask'
 
-        if save_mask:
-            mask_name = img.name + '_up-mask'
+        def _save_up_labels(params):
+            lab = params[0]
+            name = params[1]
             try:
-                viewer.layers[mask_name].data = up_mask
+                viewer.layers[name].data = lab
             except KeyError:
-                viewer.add_labels(up_mask, name=mask_name,
-                                num_colors=1, color={1:(255,0,0,255)},
-                                opacity=0.6)
+                new_labels = viewer.add_labels(lab, name=name, opacity=1)
+                new_labels.contour = 1
+
+        @thread_worker(connect={'yielded':_save_up_labels})
+        def _up_mask_calc():
+            input_img = img.data
+            detection_img = input_img[detection_img_index]
+            
+            up_mask = detection_img >= np.max(np.abs(detection_img)) * insertion_threshold
+            up_mask = morphology.erosion(up_mask, footprint=morphology.disk(2))
+            up_mask = morphology.dilation(up_mask, footprint=morphology.disk(1))
+            up_mask = ndi.binary_fill_holes(up_mask)
+            up_mask = up_mask.astype(int)
+
+            if opening_footprint != 0:
+                up_mask = morphology.opening(up_mask, footprint=morphology.disk(opening_footprint))
+                up_mask = morphology.dilation(up_mask, footprint=morphology.disk(1))
+
+            up_labels = measure.label(up_mask)
+            show_info(f'{img.name}: detected {np.max(up_labels)} labels')
+
+            yield (up_labels, labels_name)
+            if save_mask:
+                yield (up_mask, mask_name)
+
+        _up_mask_calc()                
 
 
 @magic_factory(call_button='Build Mask',
@@ -235,56 +247,62 @@ def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
 def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
               masking_mode:str='up',
               up_threshold:float=0.2,
-              down_threshold:float=-0.1):
+              down_threshold:float=-0.9,
+              opening_footprint:int=0):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
-        input_img = img.data
-        detection_img = input_img[detection_frame_index]
 
         if masking_mode == 'up':
-            mask = detection_img >= np.max(np.abs(detection_img)) * up_threshold
             labels_name = img.name + '_up-labels'
-            # mask_name = img.name + '_up-mask'
         elif masking_mode == 'down':        
-            mask = detection_img <= np.max(np.abs(detection_img)) * down_threshold
             labels_name = img.name + '_down-labels'
-            # mask_name = img.name + '_down-mask'
 
-        mask = morphology.opening(mask, footprint=morphology.disk(3))
-        mask = ndi.binary_fill_holes(mask)
-        mask = mask.astype(int)
-        labels = measure.label(mask)
-
-        mask_info = f'{img.name}: detected {np.max(labels)} labels'
-        print(mask_info)
-        show_info(mask_info)
-            
-        try:
-            viewer.layers[labels_name].data = labels
-        except KeyError:
-            viewer.add_labels(labels, name=labels_name, opacity=0.6)
-
-        if save_mask:
+        def _save_rg_labels(params):
+            lab = params[0]
+            name = params[1]
             try:
-                viewer.layers[mask_name].data = mask
+                viewer.layers[name].data = lab
             except KeyError:
-                viewer.add_labels(mask, name=mask_name,
-                                num_colors=1, color={1:(255,0,0,255)},
-                                opacity=0.6)
+                new_labels = viewer.add_labels(lab, name=labels_name, opacity=1)
+                new_labels.contour = 1
 
+        @thread_worker(connect={'yielded':_save_rg_labels})
+        def _mask_calc():
+            input_img = img.data
+            detection_img = input_img[detection_frame_index]
+
+            if masking_mode == 'up':
+                mask = detection_img >= np.max(np.abs(detection_img)) * up_threshold
+            elif masking_mode == 'down':        
+                mask = detection_img <= np.max(np.abs(detection_img)) * down_threshold
+
+            mask = morphology.erosion(mask, footprint=morphology.disk(2))
+            mask = morphology.dilation(mask, footprint=morphology.disk(1))
+            mask = ndi.binary_fill_holes(mask)
+            mask = mask.astype(int)
+
+            if opening_footprint != 0:
+                mask = morphology.opening(mask, footprint=morphology.disk(opening_footprint))
+                mask = morphology.dilation(mask, footprint=morphology.disk(1))
+
+            labels = measure.label(mask)
+            show_info(f'{img.name}: detected {np.max(labels)} "{masking_mode}" labels')
+
+            yield (labels, labels_name)
+
+        _mask_calc()
+            
 
 @magic_factory(call_button='Build Profiles',
                saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
-                        time_scale:float=2.0,
-                        raw_intensity:bool=True,
+                        time_scale:float=5.0,
+                        absolute_intensity:bool=True,
                         ΔF_win:int=5,
-                        min_amplitude:float=0.0,
-                        max_amplitude:float=5.0,
-                        frame_crop:bool=False,
-                        start_frame:int=0,
-                        stop_frame:int=10,
+                        ΔF_aplitude_lim:list=[10.0, 10.0],
+                        profiles_crop:bool=False,
+                        profiles_range:list=[0,10],
                         save_data_frame:bool=False,
                         saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
@@ -298,23 +316,14 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         time_line = np.linspace(0, input_img.shape[0]*time_scale, \
                                 num=input_img.shape[0])
 
-        if frame_crop:
-            profile_dF_fin = profile_dF[start_frame:stop_frame] 
-            profile_raw_fin = profile_raw[start_frame:stop_frame]
-            time_line_fin = time_line[start_frame:stop_frame]
-        else:
-            profile_dF_fin = np.copy(profile_dF)
-            profile_raw_fin = np.copy(profile_raw)
-            time_line_fin = np.copy(time_line)
-
-        if raw_intensity:
-            profile_to_plot = profile_raw_fin
+        if absolute_intensity:
+            profile_to_plot = profile_raw
             ylab = 'Intensity, a.u.'
-            df_name = df_name + '_raw'
+            df_name = df_name + '_absolute'
         else:
-            profile_to_plot = profile_dF_fin
+            profile_to_plot = profile_dF
             ylab = 'ΔF/F0'
-            df_name = df_name + '_dF'
+            df_name = df_name + '_ΔF'
 
         if save_data_frame:
             import pandas as pd
@@ -325,29 +334,36 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                        'roi':np.full(profile_ROI.shape[0], num_ROI+1),
                                        'int':profile_ROI,
                                        'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
-                                       'time':time_line_fin})
+                                       'time':time_line})
                 output_df = pd.concat([output_df.astype(df_ROI.dtypes),
                                        df_ROI.astype(output_df.dtypes)],
                                       ignore_index=True)
             output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
 
         # plotting
+        if profiles_crop:
+            profile_to_plot = profile_to_plot[:,profiles_range[0]:profiles_range[1]]
+            time_line = time_line[profiles_range[0]:profiles_range[1]]
+
         lab_colors = labels.get_color([prop['label'] for prop in measure.regionprops(label_image=input_labels)])
+
+        print(profile_to_plot.shape, time_line.shape, lab_colors.shape)
 
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        for num_ROI, color in enumerate(lab_colors):  # range(profile_to_plot.shape[0]):
-            profile_ROI = profile_to_plot.T[num_ROI]
-            if raw_intensity:
-                ax.plot(time_line_fin, profile_ROI,
-                         alpha=0.35, marker='o', color=color)
-                plt_title = f'{img.name} individual labels raw profiles'
-            elif (profile_ROI.max() > min_amplitude) | (profile_ROI.max() < max_amplitude):
-                ax.plot(time_line_fin, profile_ROI,
-                         alpha=0.35, marker='o', color=color)
-                plt_title = f'{img.name} individual labels profiles (min={min_amplitude}, max={max_amplitude})'
+        for num_ROI, color in enumerate(lab_colors):
+            profile_ROI = profile_to_plot[num_ROI]
+            print(profile_ROI.shape, time_line.shape, color.shape)
+            if absolute_intensity:
+                ax.plot(time_line, profile_ROI,
+                         alpha=0.45, marker='o', color=color)
+                plt_title = f'{img.name} absolute intensity profiles, labels {labels.name}'
+            elif (profile_ROI.min() > -ΔF_aplitude_lim[0]) | (profile_ROI.max() < ΔF_aplitude_lim[1]):
+                ax.plot(time_line, profile_ROI,
+                         alpha=0.45, marker='o', color=color)
+                plt_title = f'{img.name} ΔF/F0 profiles (lim -{ΔF_aplitude_lim[0]}, {ΔF_aplitude_lim[1]}), labels {labels.name}'
             else:
                 continue
         ax.grid(color='grey', linewidth=.25)
@@ -361,7 +377,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                         two_profiles:bool=False, 
-                        time_scale:float=2,
+                        time_scale:float=5.0,
                         ΔF_win:int=5,
                         stat_method:str='se'):
     if input is not None:
