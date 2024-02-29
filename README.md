@@ -29,7 +29,7 @@ Provides functions for preprocessing multi-channel fluorescence acquisitions:
 - If the `photobleaching correction` option is selected, the image will undergo correction with exponential (method `exp`) or bi-exponential (method `bi_exp`) fitting.
 - If the `crop ch` option is selected, only a selected range of channel frames will be saved (corresponding to start and stop indexes from `crop range`).
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_0.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_00.png)
 
 ## Red-green series
 Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` suffix.
@@ -40,7 +40,7 @@ Parameters:
 - `space frames` - number of frames between the last left and first right frames.
 - `right frames` - number of subsequent frames for pixel-wise averaging.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_1.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_11.png)
 
 ## Up masking
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
@@ -52,12 +52,12 @@ Parameters:
 - `opening footprint` - footprint size in pixels for mask filtering with morphology opening (disabled if 0).
 - `save mask` - if selected, a total up mask (containing all ROIs) will be created with the `_up-mask` suffix.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_2.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_22.png)
 
 ## Intensity masking
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_3.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_33.png)
 
 
 # Traffic monitoring with pH-sensitive tag
@@ -96,9 +96,9 @@ Additionally, you can save ROI intensity profiles as .csv using the `save data f
 
 _Note: The data frame will contain information for all ROIs; amplitude filtering and crop options pertain to plotting only._
 
-Absolute intensity         |  ΔF/F0
+Absolute intensity         | ΔF/F0
 :-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_4.png)  |  ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_5.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_44.png)|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_55.png)
 
 
 ## Labels stat profiles
@@ -112,4 +112,4 @@ The `stat method` provides methods for estimation intensity and errors:
 - `iqr` - interquartile range.
 - `ci` - 95% confidence interval for t-distribution.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_6.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_66.png)
