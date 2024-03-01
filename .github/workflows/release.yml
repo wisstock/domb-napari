@@ -2,8 +2,8 @@ name: Automatic Publish to PyPI
 
 on:
   push:
-    branches:
-      - release
+    tags:
+      - '*'
 
 jobs:
   build:
