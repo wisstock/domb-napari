@@ -60,7 +60,8 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_33.png)
 
 
-# Traffic monitoring with pH-sensitive tag
+
+# Exo-/endo-cytosis monitoring with pH-sensitive tag
 A collection of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
 
 Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
@@ -96,9 +97,9 @@ Additionally, you can save ROI intensity profiles as .csv using the `save data f
 
 _Note: The data frame will contain information for all ROIs; amplitude filtering and crop options pertain to plotting only._
 
-Absolute intensity         | ΔF/F0
+Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_44.png)
 :-------------------------:|:-------------------------:
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_44.png)|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_55.png)
+__ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_55.png)
 
 
 ## Labels stat profiles
