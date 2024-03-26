@@ -15,14 +15,14 @@ napari plugin for analyzing fluorescence-labeled proteins redistribution. Offers
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
+---
 
-
-# Detection of fluorescence redistributions
+## Detection of fluorescence redistributions
 A set of widgets designed for detecting fluorescence intensity redistribution through the analysis of differential image series (red-green detection).
 
 Inspired by [Dovgan et al., 2010](https://pubmed.ncbi.nlm.nih.gov/20704590/) and [Osypenko et al., 2019](https://www.sciencedirect.com/science/article/pii/S0969996119301974?via%3Dihub).
 
-## Image preprocessing
+### Image preprocessing
 Provides functions for preprocessing multi-channel fluorescence acquisitions:
 - If the input image has 4 dimensions (time, channel, x-axis, y-axis), channels will be split into individual 3 dimensions images (time, x-axis, y-axis) with the `_ch%index%` suffix.
 - If the `gaussian blur` option is selected, the image will be blurred with a Gaussian filter using sigma=`gaussian sigma`.
@@ -31,7 +31,7 @@ Provides functions for preprocessing multi-channel fluorescence acquisitions:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_00.png)
 
-## Red-green series
+### Red-green series
 Primary method for detecting fluorescent-labeled targets redistribution in time. Returns a series of differential images representing the intensity difference between the current frame and the previous one as new image with the `_red-green` suffix.
 
 Parameters:
@@ -42,7 +42,7 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_11.png)
 
-## Up masking
+### Up masking
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
 
 Parameters:
@@ -54,29 +54,29 @@ Parameters:
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_22.png)
 
-## Intensity masking
+### Intensity masking
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_33.png)
 
+---
 
-
-# Exo-/endo-cytosis monitoring with pH-sensitive tag
+## Exo-/endo-cytosis monitoring with pH-sensitive tag
 A collection of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
 
 Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
 
-## SEP image preprocessing
+### SEP image preprocessing
 Processes image series obtained through repetitive pH exchange methods (such as U-tube or ppH approaches). `pH 1st frame` option indicates the 1st frame pH. By default frames with odd indexes, including index 0, are interpreted as images acquired at pH 7.0, representing total fluorescence intensity (saved with the suffix `_total`). Even frames are interpreted as images obtained at acidic pH (5.5-6.0), representing intracellular fluorescence only (saved with the suffix `_intra`).
 
 If `calc surface img` is selected, an additional total fluorescence image with subtracted intracellular intensity will be saved as the cell surface fluorescence fraction (suffix `_surface`). The input image should be a 3-dimensional single-channel time-lapse.
 
 The `calc projections` option allows obtaining individual pH series projections (pixel-wise series MIP - pixel-wise series average) for the detection of individual exo/endocytosis events.
 
+---
 
-
-# Intensty profiles building and data frame saving
-## Individual labels profiles
+## Intensty profiles building and data frame saving
+### Individual labels profiles
 Builds a plot with mean intensity profiles for each ROI in `labels` using absolute intensity (if `absolute intensity` is selected) or relative intensities (ΔF/F0).
 
 The `time scale` sets the number of seconds between frames for x-axis scaling.
@@ -102,7 +102,7 @@ Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/pic_55.png)
 
 
-## Labels stat profiles
+### Labels stat profiles
 Builds a plot with the averaged intensity of all ROIs in `labels`. Can take two images (`img 0` and `img 1`) as input if `two profiles` are selected.
 
 The `time scale` and `ΔF win` are the same as in the __Individual Labels Profiles__.

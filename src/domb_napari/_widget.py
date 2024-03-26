@@ -40,8 +40,10 @@ def _red_green():
 
 
 @magic_factory(call_button='Preprocess Image',
+               stack_order={"choices": ['TCXY', 'CTXY']},
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
+                   stack_order:str='TCXY',
                    gaussian_blur:bool=True, gaussian_sigma=0.75,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp',
@@ -78,10 +80,14 @@ def split_channels(viewer: Viewer, img:Image,
                 return ch_img
 
             if img.data.ndim == 4:
-                show_info(f'{img.name}: Ch. split and preprocessing mode')
+                show_info(f'{img.name}: Ch. split and preprocessing mode, shape {img.data.shape}')
+                if stack_order == 'TCXY':
+                    input_img = img.data
+                elif stack_order == 'CTXY':
+                    input_img = np.moveaxis(img.data,0,1)
                 for i in range(img.data.shape[1]):
                     show_info(f'{img.name}: Ch. {i} preprocessing')
-                    yield (_preprocessing(ch_img=img.data[:,i,:,:]), img.name + f'_ch{i}')
+                    yield (_preprocessing(ch_img=input_img[:,i,:,:]), img.name + f'_ch{i}')
             elif img.data.ndim == 3:
                 show_info(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
                 yield (_preprocessing(ch_img=img.data), img.name + '_ch0')
