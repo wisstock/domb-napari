@@ -91,7 +91,7 @@ def split_channels(viewer: Viewer, img:Image,
                     input_img = img.data
                 elif stack_order == 'CTXY':
                     input_img = np.moveaxis(img.data,0,1)
-                for i in range(0,img.data.shape[1]-1):
+                for i in range(0,img.data.shape[1]):
                     show_info(f'{img.name}: Ch. {i} preprocessing')
                     yield (_preprocessing(ch_img=input_img[:,i,:,:]), img.name + f'_ch{i}')
             elif img.data.ndim == 3:
