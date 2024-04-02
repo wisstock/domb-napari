@@ -12,6 +12,7 @@ import os
 import numpy as np
 from scipy import ndimage as ndi
 from scipy import stats
+from scipy import signal
 
 from skimage import filters
 from skimage import morphology
@@ -44,7 +45,8 @@ def _red_green():
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
-                   gaussian_blur:bool=True, gaussian_sigma=0.75,
+                   median_filter:bool=True, median_kernel:int=3,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
+                   background_substraction:bool=True,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp',
                    crop_ch:bool=False,
@@ -61,20 +63,24 @@ def split_channels(viewer: Viewer, img:Image,
         @thread_worker(connect={'yielded':_save_ch})
         def _split_channels():
             def _preprocessing(ch_img):
-                corr_img = np.mean(ch_img, axis=0)
-                corr_mask = corr_img > filters.threshold_otsu(corr_img)
-                corr_mask = morphology.dilation(corr_mask, footprint=morphology.disk(10))
                 if crop_ch:
                     if len(crop_range) == 2:
                         ch_img = ch_img[crop_range[0]:crop_range[-1],:,:]
                     else:
                         raise ValueError('List of indexes should has 2 elements!')
-                if gaussian_blur:
-                    ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
-                    show_info(f'Img series blured with sigma {gaussian_sigma}')
+                if median_filter:
+                    median_axis = lambda x,k: np.array([ndi.median_filter(f, size=k) for f in x], dtype=x.dtype)
+                    ch_img = median_axis(ch_img, median_kernel)
+                # if gaussian_blur:
+                #     ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
+                #     show_info(f'Img series blured with sigma {gaussian_sigma}')
+                if background_substraction:
+                    bc_p = lambda x: np.array([f - np.percentile(f, 0.5) for f in x]).clip(min=0).astype(dtype=x.dtype)
+                    ch_img = bc_p(ch_img)
                 if photobleaching_correction:
+                    pb_mask = masking.proc_mask(np.mean(ch_img, axis=0))
                     ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img,
-                                                                mask=corr_mask,
+                                                                mask=pb_mask,
                                                                 method=correction_method)
                     show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
                 return ch_img
@@ -85,7 +91,7 @@ def split_channels(viewer: Viewer, img:Image,
                     input_img = img.data
                 elif stack_order == 'CTXY':
                     input_img = np.moveaxis(img.data,0,1)
-                for i in range(img.data.shape[1]):
+                for i in range(0,img.data.shape[1]-1):
                     show_info(f'{img.name}: Ch. {i} preprocessing')
                     yield (_preprocessing(ch_img=input_img[:,i,:,:]), img.name + f'_ch{i}')
             elif img.data.ndim == 3:
