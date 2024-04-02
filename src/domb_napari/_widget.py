@@ -24,7 +24,11 @@ import vispy.color
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 
+from dipy.align.transforms import AffineTransform2D
+from dipy.align.imaffine import AffineRegistration
+
 from domb.utils import masking
+from domb.fret.e_fret import e_app
 
 
 def _red_green():
@@ -40,7 +44,7 @@ def _red_green():
                                   [1.0, 0.0, 0.0]])
 
 
-@magic_factory(call_button='Preprocess Image',
+@magic_factory(call_button='Preprocess stack',
                stack_order={"choices": ['TCXY', 'CTXY']},
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
@@ -49,8 +53,8 @@ def split_channels(viewer: Viewer, img:Image,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp',
-                   crop_ch:bool=False,
-                   crop_range:list=[0,10]):
+                   drop_frames:bool=False,
+                   frames_range:list=[0,10]):
     if input is not None:
         def _save_ch(params):
             img = params[0]
@@ -63,9 +67,9 @@ def split_channels(viewer: Viewer, img:Image,
         @thread_worker(connect={'yielded':_save_ch})
         def _split_channels():
             def _preprocessing(ch_img):
-                if crop_ch:
-                    if len(crop_range) == 2:
-                        ch_img = ch_img[crop_range[0]:crop_range[-1],:,:]
+                if drop_frames:
+                    if len(frames_range) == 2:
+                        ch_img = ch_img[frames_range[0]:frames_range[-1],:,:]
                     else:
                         raise ValueError('List of indexes should has 2 elements!')
                 if median_filter:
@@ -101,6 +105,66 @@ def split_channels(viewer: Viewer, img:Image,
                 raise ValueError('Input image should have 3 or 4 dimensions!')       
         
         _split_channels()
+
+
+@magic_factory(call_button='Align stack')
+def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
+                    input_crop:int=15, output_crop:int=10):
+    if input is not None:
+        if (offset_img.data.ndim == 4) and (reference_img.data.ndim == 3):
+
+            def _save_aligned(img):
+                try: 
+                    viewer.layers[offset_img.name].data = img
+                    viewer.layers[offset_img.name].colormap = 'turbo'
+                except KeyError:
+                    viewer.add_image(img, name=offset_img.name, colormap='turbo')
+
+            @thread_worker(connect={'yielded':_save_aligned})
+            def _dw_registration():
+                offset_series = offset_img.data
+                master_img = reference_img.data
+
+                if input_crop != 0:
+                    y, x = offset_series.shape[-2:]
+                    offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
+                    master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
+
+                master_img_ref, master_img_offset = master_img[1], master_img[0]
+                affreg = AffineRegistration()
+                transform = AffineTransform2D()
+                affine = affreg.optimize(master_img_ref, master_img_offset,
+                                        transform, params0=None)
+                master_img_xform = affine.transform(master_img_offset)
+
+                masking.misalign_estimate(master_img_ref, master_img_offset,
+                                          title='Master raw', show_img=False, rough_estimate=True)
+                masking.misalign_estimate(master_img_ref, master_img_xform,
+                                          title='Master xform', show_img=False, rough_estimate=True)
+                masking.misalign_estimate(np.mean(offset_series[:,0,:,:], axis=0),
+                                          np.mean(offset_series[:,-1,:,:], axis=0),
+                                          title='Raw', show_img=False, rough_estimate=True)
+
+                ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
+                ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
+                xform_series = np.stack((ch0_xform,
+                                         offset_series[:,1,:,:],
+                                         ch2_xform,
+                                         offset_series[:,3,:,:]),
+                                        axis=1)
+                if output_crop != 0:
+                    yo, xo = xform_series.shape[-2:]
+                    xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
+
+                masking.misalign_estimate(np.mean(xform_series[:,0,:,:], axis=0),
+                                          np.mean(xform_series[:,-1,:,:], axis=0),
+                                          title='Xform', show_img=False, rough_estimate=True)
+                
+                yield xform_series.astype(offset_series.dtype)
+                    
+            _dw_registration()
+        else:
+            raise ValueError('Incorrect input image shape!')
 
 
 @magic_factory(call_button='Split SEP',
@@ -168,6 +232,39 @@ def split_sep(viewer: Viewer, img:Image,
             _split_sep()
         else:
             raise ValueError('The input image should have 3 dimensions!')
+
+
+@magic_factory(call_button='Calc E-FRET')
+def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
+          a:float=0.1489, b:float=0.1324, c:float=0.2481, d:float=0.8525, G:float=4.5,
+          Eapp_correction:bool=True):
+    if input is not None:
+        if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3):
+
+            def _save_e_app(params):
+                img = params[0]
+                img_name = params[1]
+                try: 
+                    viewer.layers[img_name].data = img
+                except KeyError:
+                    viewer.add_image(img, name=img_name, colormap='turbo')
+
+            @thread_worker(connect={'yielded':_save_e_app})
+            def _e_app_calc():
+                e_fret_img = e_app.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
+                                        abcd_list=[a,b,c,d], G_val=G,
+                                        mask=masking.proc_mask(np.mean(AA_img.data, axis=0)))
+                if Eapp_correction:
+                    output_fret_img = e_fret_img.Ecorr_img
+                    output_suffix = '_Ecorr'
+                else:
+                    output_fret_img = e_fret_img.Eapp_img
+                    output_suffix = '_Eapp'
+                yield (output_fret_img, AA_img.name + output_suffix)
+
+            _e_app_calc()
+        else:
+            raise ValueError('Incorrect input image shape!')
 
 
 @magic_factory(call_button='Calc Red-Green')
@@ -453,6 +550,7 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
             ax.set_ylabel('ΔF/F0')
             plt.title(f'{img_0.name} labels profile (method {stat_method})')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img_0.name} Profile')
+
 
 
 if __name__ == '__main__':

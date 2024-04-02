@@ -2,11 +2,17 @@ name: domb-napari
 contributions:
   commands:
     - id: domb-napari.split_channels_widget
-      title: Multichannel image preprocessing
+      title: Multichannel stack preprocessing
       python_name: domb_napari._widget:split_channels
+    - id: domb-napari.dw_registration_widget
+      title: Dual-view stack registration
+      python_name: domb_napari._widget:dw_registration
     - id: domb-napari.split_sep_widget
       title: SEP image preprocessing
       python_name: domb_napari._widget:split_sep
+    - id: domb-napari.e_app_widget
+      title: E-FRET estimation
+      python_name: domb_napari._widget:e_app_calc
     - id: domb-napari.der_series_widget
       title: Red-green series
       python_name: domb_napari._widget:der_series
@@ -24,9 +30,13 @@ contributions:
       python_name: domb_napari._widget:labels_profile_stat
   widgets:
     - command: domb-napari.split_channels_widget
-      display_name: Image preprocessing
+      display_name: Stack preprocessing
+    - command: domb-napari.dw_registration_widget
+      display_name: Dual-view stack registration
     - command: domb-napari.split_sep_widget
       display_name: SEP preprocessing
+    - command: domb-napari.e_app_widget
+      display_name: E-FRET estimation
     - command: domb-napari.der_series_widget
       display_name: Red-green series
     - command: domb-napari.up_mask_calc_widget
