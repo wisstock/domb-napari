@@ -66,10 +66,11 @@ def split_channels(viewer: Viewer, img:Image,
 
         @thread_worker(connect={'yielded':_save_ch})
         def _split_channels():
-            def _preprocessing(ch_img):
+            def _preprocessing(ch_img, ch_suffix):
                 if drop_frames:
                     if len(frames_range) == 2:
                         ch_img = ch_img[frames_range[0]:frames_range[-1],:,:]
+                        ch_suffix = f'_{frames_range[0]}-{frames_range[-1]}'+ch_suffix
                     else:
                         raise ValueError('List of indexes should has 2 elements!')
                 if median_filter:
@@ -87,7 +88,7 @@ def split_channels(viewer: Viewer, img:Image,
                                                                 mask=pb_mask,
                                                                 method=correction_method)
                     show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
-                return ch_img
+                return (ch_img, img.name+ch_suffix)
 
             if img.data.ndim == 4:
                 show_info(f'{img.name}: Ch. split and preprocessing mode, shape {img.data.shape}')
@@ -97,10 +98,10 @@ def split_channels(viewer: Viewer, img:Image,
                     input_img = np.moveaxis(img.data,0,1)
                 for i in range(0,img.data.shape[1]):
                     show_info(f'{img.name}: Ch. {i} preprocessing')
-                    yield (_preprocessing(ch_img=input_img[:,i,:,:]), img.name + f'_ch{i}')
+                    yield _preprocessing(ch_img=input_img[:,i,:,:], ch_suffix=f'_ch{i}')
             elif img.data.ndim == 3:
                 show_info(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
-                yield (_preprocessing(ch_img=img.data), img.name + '_ch0')
+                yield _preprocessing(ch_img=img.data, ch_suffix=f'_ch0')
             else:
                 raise ValueError('Input image should have 3 or 4 dimensions!')       
         
@@ -109,9 +110,9 @@ def split_channels(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Align stack')
 def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
-                    input_crop:int=25, output_crop:int=10):
+                    use_reference_img:bool=False, input_crop:int=25, output_crop:int=10):
     if input is not None:
-        if (offset_img.data.ndim == 4) and (reference_img.data.ndim == 3):
+        if offset_img.data.ndim == 4:
 
             def _save_aligned(img):
                 xform_name = offset_img.name+'_xform'
@@ -131,7 +132,12 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                     offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
                     master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
 
-                master_img_ref, master_img_offset = master_img[1], master_img[0]
+                if use_reference_img:
+                    master_img_ref, master_img_offset = master_img[1], master_img[0]
+                else:
+                    master_img_ref = np.mean(offset_series[:,3,:,:], axis=0)
+                    master_img_offset = np.mean(offset_series[:,0,:,:], axis=0)
+
                 affreg = AffineRegistration()
                 transform = AffineTransform2D()
                 affine = affreg.optimize(master_img_ref, master_img_offset,
@@ -139,12 +145,9 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 master_img_xform = affine.transform(master_img_offset)
 
                 masking.misalign_estimate(master_img_ref, master_img_offset,
-                                          title='Master raw', show_img=False, rough_estimate=True)
+                                          title='Master raw', show_img=False, rough_estimate=False)
                 masking.misalign_estimate(master_img_ref, master_img_xform,
-                                          title='Master xform', show_img=False, rough_estimate=True)
-                # masking.misalign_estimate(np.mean(offset_series[:,0,:,:], axis=0),
-                #                           np.mean(offset_series[:,-1,:,:], axis=0),
-                #                           title='Raw', show_img=False, rough_estimate=True)
+                                          title='Master xform', show_img=False, rough_estimate=False)
 
                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
@@ -156,10 +159,6 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 if output_crop != 0:
                     yo, xo = xform_series.shape[-2:]
                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
-
-                # masking.misalign_estimate(np.mean(xform_series[:,0,:,:], axis=0),
-                #                           np.mean(xform_series[:,-1,:,:], axis=0),
-                #                           title='Xform', show_img=False, rough_estimate=True)
                 
                 yield xform_series.astype(offset_series.dtype)
                     
@@ -237,8 +236,9 @@ def split_sep(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Calc E-FRET')
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-          a:float=0.122, d:float=0.794, G:float=3.6,
-          Eapp_correction:bool=False):
+          a:float=0.122, d:float=0.794, G:float=4.11,
+          Eapp_correction:bool=False,
+          save_normalized_E:bool=False):
     if input is not None:
         if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3):
 
@@ -262,6 +262,11 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                     output_fret_img = e_fret_img.Eapp_img
                     output_suffix = '_Eapp'
                 yield (output_fret_img, AA_img.name + output_suffix)
+                if save_normalized_E:
+                    img_norm = np.mean(AA_img.data, axis=0)
+                    img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm))
+                    output_norm = output_fret_img*img_norm
+                    yield (output_norm, AA_img.name + output_suffix + '_norm')
 
             _e_app_calc()
         else:
@@ -281,7 +286,10 @@ def der_series(viewer: Viewer, img:Image,
             try: 
                 viewer.layers[img_name].data = img
             except KeyError:
-                c_lim = np.max(np.abs(img)) * 0.75
+                if normalize_by_int:
+                    c_lim = np.max(np.abs(img)) * 0.3
+                else:
+                    c_lim = np.max(np.abs(img)) * 0.75
                 new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
                 new_image.colormap = 'red-green', _red_green()
 
@@ -335,7 +343,7 @@ def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
             input_img = img.data
             detection_img = input_img[detection_img_index]
             
-            up_mask = detection_img >= np.max(np.abs(detection_img)) * (insertion_threshold/100.0)
+            up_mask = detection_img >= np.max(np.abs(detection_img)) * (insertion_threshold/50.0)
             up_mask = morphology.erosion(up_mask, footprint=morphology.disk(2))
             up_mask = morphology.dilation(up_mask, footprint=morphology.disk(1))
             up_mask = ndi.binary_fill_holes(up_mask)
@@ -489,7 +497,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
 @magic_factory(call_button='Build Profile',
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
-                        raw_intensity:bool=False,
+                        absolute_intensity:bool=False,
                         two_profiles:bool=False, 
                         time_scale:float=5.0,
                         ΔF_win:int=5,
@@ -497,14 +505,14 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
     if input is not None:
         # mean, se
         arr_se_stat = lambda x: (np.mean(x, axis=0), \
-                                np.std(x, axis=0)/np.sqrt(x.shape[1]))
+                                 np.std(x, axis=0)/np.sqrt(x.shape[1]))
         # meadian, IQR
         arr_iqr_stat = lambda x: (np.median(x, axis=0), \
-                                stats.iqr(x, axis=0))
+                                  stats.iqr(x, axis=0))
         # mean, CI
         arr_ci_stat = lambda x, alpha=0.05: (np.mean(x, axis=0), \
-                                            stats.t.ppf(1-alpha/2, df=x.shape[1]-1) \
-                                                        *np.std(x, axis=0, ddof=1)/np.sqrt(x.shape[1]))
+                                             stats.t.ppf(1-alpha/2, df=x.shape[1]-1) \
+                                                         *np.std(x, axis=0, ddof=1)/np.sqrt(x.shape[1]))
         stat_dict = {'se':arr_se_stat,
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
@@ -516,10 +524,12 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
         profile_dF_0, profile_raw_0 = masking.label_prof_arr(input_label=input_labels,
                                                              input_img_series=input_img_0,
                                                              f0_win=ΔF_win)
-        if raw_intensity:
+        if absolute_intensity:
             selected_profile_0  = profile_raw_0
+            ylab = 'Intensity, a.u.'
         else:
             selected_profile_0  = profile_dF_0
+            ylab = 'ΔF/F0'
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
         if two_profiles:
@@ -527,7 +537,7 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
             profile_dF_1, profile_raw_1 = masking.label_prof_arr(input_label=input_labels,
                                                                  input_img_series=input_img_1,
                                                                  f0_win=ΔF_win)
-            if raw_intensity:
+            if absolute_intensity:
                 selected_profile_1  = profile_raw_1
             else:
                 selected_profile_1  = profile_dF_1
@@ -550,7 +560,7 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                         fmt ='-o', capsize=2, label=img_1.name, alpha=0.75)
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Time, s')
-            ax.set_ylabel('ΔF/F0')
+            ax.set_ylabel(ylab)
             plt.legend()
             plt.title(f'Two labels profiles (method {stat_method})')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Two Profiles')
@@ -573,4 +583,4 @@ if __name__ == '__main__':
 
     split_channels_widget = split_channels()
     viewer.window.add_dock_widget(split_channels_widget, name = 'Preprocessing',
-                                area='right')
+                                  area='right')
