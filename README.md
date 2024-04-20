@@ -103,9 +103,9 @@ Parameters:
 
 If the `save normalized` option is selected, an additional image will be saved. This image is normalized to the absolute intensity of the `AA img`, resulting in reduced background noise amplitude.
 
-Raw Eapp| Normalized Eapp
+Raw Eapp| ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_raw.png)
 :-:|:-:
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_raw.png)|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_norm.png)
+__Normalized Eapp__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_norm.png)
 
 ---
 
