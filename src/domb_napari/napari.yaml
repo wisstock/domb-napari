@@ -23,27 +23,27 @@ contributions:
       title: Intensity masking
       python_name: domb_napari._widget:mask_calc
     - id: domb-napari.labels_profiles_set_widget
-      title: Individual labels profiles
+      title: ROIs profiles
       python_name: domb_napari._widget:labels_profile_line
     - id: domb-napari.labels_profile_widget
-      title: Labels stat profiles
+      title: Stat profiles
       python_name: domb_napari._widget:labels_profile_stat
   widgets:
-    - command: domb-napari.split_channels_widget
-      display_name: Stack preprocessing
     - command: domb-napari.dw_registration_widget
       display_name: Dual-view stack registration
-    - command: domb-napari.split_sep_widget
-      display_name: SEP preprocessing
-    - command: domb-napari.e_app_widget
-      display_name: E-FRET estimation
+    - command: domb-napari.split_channels_widget
+      display_name: Multichannel stack preprocessing
     - command: domb-napari.der_series_widget
       display_name: Red-green series
+    - command: domb-napari.e_app_widget
+      display_name: E-FRET estimation
+    - command: domb-napari.split_sep_widget
+      display_name: SEP preprocessing
     - command: domb-napari.up_mask_calc_widget
       display_name: Up masking
     - command: domb-napari.mask_calc_widget
       display_name: Intensity masking
     - command: domb-napari.labels_profiles_set_widget
-      display_name: Individual labels profiles
+      display_name: ROIs profiles
     - command: domb-napari.labels_profile_widget
-      display_name: Labels stat profiles
+      display_name: Stat profiles

@@ -144,10 +144,10 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                                         transform, params0=None)
                 master_img_xform = affine.transform(master_img_offset)
 
-                masking.misalign_estimate(master_img_ref, master_img_offset,
-                                          title='Master raw', show_img=False, rough_estimate=False)
-                masking.misalign_estimate(master_img_ref, master_img_xform,
-                                          title='Master xform', show_img=False, rough_estimate=False)
+                # masking.misalign_estimate(master_img_ref, master_img_offset,
+                #                           title='Master raw', show_img=False, rough_estimate=False)
+                # masking.misalign_estimate(master_img_ref, master_img_xform,
+                #                           title='Master xform', show_img=False, rough_estimate=False)
 
                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
@@ -234,11 +234,12 @@ def split_sep(viewer: Viewer, img:Image,
             raise ValueError('The input image should have 3 dimensions!')
 
 
-@magic_factory(call_button='Calc E-FRET')
+@magic_factory(call_button='Calc E-FRET',
+               output_type={"choices": ['Eapp', 'Ecorr', 'Fc']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-          a:float=0.122, d:float=0.794, G:float=4.11,
-          Eapp_correction:bool=False,
-          save_normalized_E:bool=False):
+               a:float=0.122, d:float=0.794, G:float=4.11,
+               output_type:str='Eapp',
+               save_normalized:bool=True):
     if input is not None:
         if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3):
 
@@ -255,18 +256,22 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                 e_fret_img = e_app.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
                                         abcd_list=[a,0,0,d], G_val=G,
                                         mask=masking.proc_mask(np.mean(AA_img.data, axis=0)))
-                if Eapp_correction:
+                output_name = AA_img.name.replace('_ch3','')
+                if output_type == 'Ecorr':
                     output_fret_img = e_fret_img.Ecorr_img
                     output_suffix = '_Ecorr'
-                else:
+                elif output_type == 'Eapp':
                     output_fret_img = e_fret_img.Eapp_img
                     output_suffix = '_Eapp'
-                yield (output_fret_img, AA_img.name + output_suffix)
-                if save_normalized_E:
+                elif output_type == 'Fc':
+                    output_fret_img = e_fret_img.Fc_img
+                    output_suffix = '_Fc'
+                yield (output_fret_img, output_name + output_suffix)
+                if save_normalized:
                     img_norm = np.mean(AA_img.data, axis=0)
                     img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm))
                     output_norm = output_fret_img*img_norm
-                    yield (output_norm, AA_img.name + output_suffix + '_norm')
+                    yield (output_norm, output_name + output_suffix + '_norm')
 
             _e_app_calc()
         else:
@@ -276,13 +281,15 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 @magic_factory(call_button='Calc Red-Green')
 def der_series(viewer: Viewer, img:Image,
                left_frames:int=2, space_frames:int=2, right_frames:int=2,
-               normalize_by_int:bool=False):
+               normalize_by_int:bool=False,
+               save_MIP:bool=False):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
-        img_name = img.name + '_red-green'
 
-        def _save_rg_img(img):
+        def _save_rg_img(params):
+            img = params[0]
+            img_name = params[1]
             try: 
                 viewer.layers[img_name].data = img
             except KeyError:
@@ -312,7 +319,11 @@ def der_series(viewer: Viewer, img:Image,
                 der_img.append(img_diff)
 
             der_img = np.asarray(der_img, dtype=float)
-            yield der_img
+            yield (der_img, img.name + '_red-green')
+
+            if save_MIP:
+                der_mip = np.max(der_img, axis=0)
+                yield (der_mip, img.name + '_red-green-MIP')
 
         _der_series()
 
@@ -429,18 +440,19 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
     if input is not None:
         input_img = img.data
         input_labels = labels.data
-        df_name = img.name + '_lab_prof'
+        df_name = img.name + '_' + labels.name
+        df_name = df_name.replace('_xform','')
 
         profile_dF, profile_raw = masking.label_prof_arr(input_label=input_labels,
                                                          input_img_series=input_img,
                                                          f0_win=ΔF_win)
-        time_line = np.linspace(0, input_img.shape[0]*time_scale, \
+        time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
         if absolute_intensity:
             profile_to_plot = profile_raw
             ylab = 'Intensity, a.u.'
-            df_name = df_name + '_absolute'
+            df_name = df_name + '_abs'
         else:
             profile_to_plot = profile_dF
             ylab = 'ΔF/F0'
@@ -468,15 +480,12 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
 
         lab_colors = labels.get_color([prop['label'] for prop in measure.regionprops(label_image=input_labels)])
 
-        print(profile_to_plot.shape, time_line.shape, lab_colors.shape)
-
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         for num_ROI, color in enumerate(lab_colors):
             profile_ROI = profile_to_plot[num_ROI]
-            print(profile_ROI.shape, time_line.shape, color.shape)
             if absolute_intensity:
                 ax.plot(time_line, profile_ROI,
                          alpha=0.45, marker='o', color=color)
@@ -491,14 +500,16 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
         plt.title(plt_title)
-        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img.name} Profile')
+        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='ROIs Prof.')
 
 
 @magic_factory(call_button='Build Profile',
-               stat_method={"choices": ['se', 'iqr', 'ci']},)
-def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
-                        absolute_intensity:bool=False,
-                        two_profiles:bool=False, 
+               stat_method={"choices": ['se', 'iqr', 'ci']},
+               profiles_num={"choices": ['1', '2', '3']},)
+def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
+                        labels:Labels,
+                        profiles_num:str='1',
+                        absolute_intensity:bool=False, 
                         time_scale:float=5.0,
                         ΔF_win:int=5,
                         stat_method:str='se'):
@@ -526,13 +537,13 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                                                              f0_win=ΔF_win)
         if absolute_intensity:
             selected_profile_0  = profile_raw_0
-            ylab = 'Intensity, a.u.'
+            ylab = 'I'
         else:
             selected_profile_0  = profile_dF_0
             ylab = 'ΔF/F0'
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
-        if two_profiles:
+        if profiles_num == '2' or profiles_num == '3':
             input_img_1 = img_1.data
             profile_dF_1, profile_raw_1 = masking.label_prof_arr(input_label=input_labels,
                                                                  input_img_series=input_img_1,
@@ -543,36 +554,50 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, labels:Labels,
                 selected_profile_1  = profile_dF_1
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
+        if profiles_num == '3':
+            input_img_2 = img_2.data
+            profile_dF_2, profile_raw_2 = masking.label_prof_arr(input_label=input_labels,
+                                                                 input_img_series=input_img_2,
+                                                                 f0_win=ΔF_win)
+            if absolute_intensity:
+                selected_profile_2  = profile_raw_2
+            else:
+                selected_profile_2  = profile_dF_2
+            arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
+
         # plotting
-        time_line = np.linspace(0, input_img_0.shape[0]*time_scale, \
+        time_line = np.linspace(0, (input_img_0.shape[0]-1)*time_scale, \
                                 num=input_img_0.shape[0])
         
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)        
-        if two_profiles:
-            ax.errorbar(time_line, arr_val_0,
-                        yerr = arr_var_0,
-                        fmt ='-o', capsize=2, label=img_0.name, alpha=0.75)
+        ax.spines['right'].set_visible(False)
+
+        ax.grid(color='grey', linewidth=.25)
+        ax.set_xlabel('Time, s')
+        ax.set_ylabel(ylab)
+
+        ax.errorbar(time_line, arr_val_0,
+                    yerr = arr_var_0,
+                    fmt ='-o', capsize=2, label=img_0.name,
+                    alpha=0.75, color='black')
+        
+        if profiles_num == '2' or profiles_num == '3':
             ax.errorbar(time_line, arr_val_1,
                         yerr = arr_var_1,
-                        fmt ='-o', capsize=2, label=img_1.name, alpha=0.75)
-            ax.grid(color='grey', linewidth=.25)
-            ax.set_xlabel('Time, s')
-            ax.set_ylabel(ylab)
-            plt.legend()
-            plt.title(f'Two labels profiles (method {stat_method})')
-            viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Two Profiles')
-        else:
-            ax.errorbar(time_line, arr_val_0,
-                        yerr = arr_var_0,
-                        fmt ='-o', capsize=2)
-            ax.grid(color='grey', linewidth=.25)
-            ax.set_xlabel('Time, s')
-            ax.set_ylabel('ΔF/F0')
-            plt.title(f'{img_0.name} labels profile (method {stat_method})')
-            viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name=f'{img_0.name} Profile')
+                        fmt ='-o', capsize=2, label=img_1.name,
+                        alpha=0.75, color='red')
+
+        if profiles_num == '3':
+            ax.errorbar(time_line, arr_val_2,
+                        yerr = arr_var_2,
+                        fmt ='-o', capsize=2, label=img_2.name,
+                        alpha=0.75, color='blue')
+        
+        plt.legend()
+        plt.title(f'{labels.name}, method {stat_method}')
+        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Stat Prof.')
 
 
 if __name__ == '__main__':
