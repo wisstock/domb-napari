@@ -237,7 +237,7 @@ def split_sep(viewer: Viewer, img:Image,
 @magic_factory(call_button='Calc E-FRET',
                output_type={"choices": ['Eapp', 'Ecorr', 'Fc']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.122, d:float=0.794, G:float=4.11,
+               a:float=0.122, d:float=0.794, G:float=3.6,
                output_type:str='Eapp',
                save_normalized:bool=True):
     if input is not None:
