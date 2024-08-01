@@ -1,6 +1,5 @@
 from magicgui import magic_factory
 
-import napari
 from napari import Viewer
 from napari.layers import Image, Labels
 from napari.utils.notifications import show_info
@@ -18,6 +17,8 @@ from skimage import filters
 from skimage import morphology
 from skimage import measure
 from skimage import restoration
+from skimage import feature
+from skimage import segmentation
 
 import vispy.color
 
@@ -49,7 +50,7 @@ def _red_green():
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
-                   median_filter:bool=True, median_kernel:int=3,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
+                   median_filter:bool=True, median_kernel:int=2,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
                    correction_method:str='exp',
@@ -76,9 +77,6 @@ def split_channels(viewer: Viewer, img:Image,
                 if median_filter:
                     median_axis = lambda x,k: np.array([ndi.median_filter(f, size=k) for f in x], dtype=x.dtype)
                     ch_img = median_axis(ch_img, median_kernel)
-                # if gaussian_blur:
-                #     ch_img = filters.gaussian(ch_img, sigma=gaussian_sigma, channel_axis=0)
-                #     show_info(f'Img series blured with sigma {gaussian_sigma}')
                 if background_substraction:
                     bc_p = lambda x: np.array([f - np.percentile(f, 0.5) for f in x]).clip(min=0).astype(dtype=x.dtype)
                     ch_img = bc_p(ch_img)
@@ -110,7 +108,7 @@ def split_channels(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Align stack')
 def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
-                    use_reference_img:bool=False, input_crop:int=25, output_crop:int=10):
+                    use_reference_img:bool=False, input_crop:int=25, output_crop:int=20):
     if input is not None:
         if offset_img.data.ndim == 4:
 
@@ -328,6 +326,56 @@ def der_series(viewer: Viewer, img:Image,
         _der_series()
 
 
+@magic_factory(call_button='Build Dots Mask',
+               background_level={"widget_type": "FloatSlider", 'min':5.0, 'max': 100.0, 'step':5.0},
+               detection_level={"widget_type": "FloatSlider",'min':5.0, 'max': 100.0, 'step':5.0},)
+def dot_mask_calc(viewer: Viewer, img:Image, mask_diamets:int=5, minimal_distance:int=2,
+                  background_level:float=95.0, detection_level:float=25.0):
+    if input is not None:
+        if img.data.ndim != 3:
+            raise ValueError('The input image should have 3 dimensions!')
+        labels_name = img.name + '_dot-labels'
+
+        def _save_dot_labels(params):
+            lab = params[0]
+            name = params[1]
+            try:
+                viewer.layers[name].data = lab
+            except KeyError:
+                new_labels = viewer.add_labels(lab, name=name, opacity=1)
+                new_labels.contour = 1
+
+        @thread_worker(connect={'yielded':_save_dot_labels})
+        def _dot_mask_calc():
+            prc_filt = lambda x, p: np.array(x - np.percentile(x, p)).clip(min=0).astype(dtype=x.dtype)
+
+            input_img = img.data
+            input_mip = np.max(input_img, axis=0)
+            detection_mip = prc_filt(x=input_mip, p=background_level)
+
+            peaks_coord = feature.peak_local_max(detection_mip,
+                                                 min_distance=2,
+                                                 threshold_rel=detection_level/100.0)
+            peaks_img = np.zeros_like(input_mip, dtype=bool)
+            peaks_img[tuple(peaks_coord.T)] = True
+            peaks_mask = morphology.dilation(peaks_img, footprint=morphology.disk(mask_diamets))
+
+            mask_dist_img = ndi.distance_transform_edt(peaks_mask)
+            mask_centers_coord = feature.peak_local_max(mask_dist_img,
+                                                        min_distance=minimal_distance)
+            mask_centers = np.zeros_like(input_mip, dtype=bool)
+            mask_centers[tuple(mask_centers_coord.T)] = True
+
+            peaks_labels = segmentation.watershed(-mask_dist_img,
+                                                  markers=morphology.label(mask_centers),
+                                                  mask=peaks_mask,
+                                                  compactness=10)
+            show_info(f'{img.name}: detected {np.max(peaks_labels)} dots labels')
+            yield (peaks_labels, labels_name)
+
+        _dot_mask_calc()
+
+
 @magic_factory(call_button='Build Up Mask',
                insertion_threshold={"widget_type": "FloatSlider", 'max': 5},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
 def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
@@ -430,44 +478,76 @@ def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
                saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=5.0,
-                        absolute_intensity:bool=True,
+                        absolute_intensity:bool=False,
                         ΔF_win:int=5,
                         ΔF_aplitude_lim:list=[10.0, 10.0],
                         profiles_crop:bool=False,
                         profiles_range:list=[0,10],
                         save_data_frame:bool=False,
+                        save_ROIs_distances_in_data_frame:bool=False,
                         saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         input_img = img.data
         input_labels = labels.data
         df_name = img.name + '_' + labels.name
         df_name = df_name.replace('_xform','')
-
-        profile_dF, profile_raw = masking.label_prof_arr(input_label=input_labels,
-                                                         input_img_series=input_img,
-                                                         f0_win=ΔF_win)
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
+        if save_ROIs_distances_in_data_frame:
+            col_list = ['id','roi','int', 'dist', 'index', 'time']
+            tip_position_img = np.ones_like(input_img[0], dtype=bool)
+            tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
+            tip_position_img[tip_x,tip_y] = False
+            tip_distance_img = ndi.distance_transform_edt(tip_position_img)
+            distance_list = []
+            show_info(f'{img.name}: center position {tip_x, tip_y}')
+        else:
+            col_list = ['id','roi','int', 'index', 'time']
+
+        profile_raw = []
+        profile_dF = []
+        for label_num in np.unique(input_labels)[1:]:
+            region_mask = input_labels == label_num
+            one_prof = np.mean(input_img, axis=(1,2), where=region_mask)
+            F_0 = np.mean(one_prof[:ΔF_win])
+            one_prof_df = (one_prof-F_0)/F_0
+
+            profile_raw.append(one_prof)
+            profile_dF.append(one_prof_df)
+
+            if save_ROIs_distances_in_data_frame:
+                distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
+
+        profile_raw = np.asarray(profile_raw)
+        profile_dF = np.asarray(profile_dF)
+
+        profile_to_plot = []
         if absolute_intensity:
-            profile_to_plot = profile_raw
+            profile_to_plot = np.round(profile_raw)
             ylab = 'Intensity, a.u.'
             df_name = df_name + '_abs'
         else:
-            profile_to_plot = profile_dF
+            profile_to_plot = np.round(profile_dF, decimals=4)
             ylab = 'ΔF/F0'
             df_name = df_name + '_ΔF'
 
         if save_data_frame:
             import pandas as pd
-            output_df = pd.DataFrame(columns=['id','roi','int', 'index', 'time'])
+            output_df = pd.DataFrame(columns=col_list)
+
             for num_ROI in range(profile_to_plot.shape[0]):
                 profile_ROI = profile_to_plot[num_ROI]
-                df_ROI = pd.DataFrame({'id':np.full(profile_ROI.shape[0], img.name),
-                                       'roi':np.full(profile_ROI.shape[0], num_ROI+1),
-                                       'int':profile_ROI,
-                                       'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
-                                       'time':time_line})
+
+                dict_ROI = {'id':img.name,
+                            'roi':num_ROI+1,
+                            'int':profile_ROI,
+                            'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
+                            'time':time_line}
+                if save_ROIs_distances_in_data_frame:
+                    dict_ROI['dist'] = distance_list[num_ROI]
+
+                df_ROI = pd.DataFrame(dict_ROI)
                 output_df = pd.concat([output_df.astype(df_ROI.dtypes),
                                        df_ROI.astype(output_df.dtypes)],
                                       ignore_index=True)

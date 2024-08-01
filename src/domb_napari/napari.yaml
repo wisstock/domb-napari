@@ -28,6 +28,9 @@ contributions:
     - id: domb-napari.labels_profile_widget
       title: Stat profiles
       python_name: domb_napari._widget:labels_profile_stat
+    - id: domb-napari.dot_mask_widget
+      title: Dot-patterns masking
+      python_name: domb_napari._widget:dot_mask_calc
   widgets:
     - command: domb-napari.dw_registration_widget
       display_name: Dual-view stack registration
@@ -39,6 +42,8 @@ contributions:
       display_name: E-FRET estimation
     - command: domb-napari.split_sep_widget
       display_name: SEP preprocessing
+    - command: domb-napari.dot_mask_widget
+      display_name: Dot-patterns masking
     - command: domb-napari.up_mask_calc_widget
       display_name: Up masking
     - command: domb-napari.mask_calc_widget
