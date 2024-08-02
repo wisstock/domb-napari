@@ -40,7 +40,7 @@ Registration of four-channel image stacks, including two excitation wavelengths 
 ### Multichannel stack preprocessing
 - `stack order` -  represents the order of axes in the input data array: T (time), C (color), X, and Y (image dimensions). If the input image stack has four dimensions (time, channel, x-axis, y-axis), channels will be split into individual three-dimensional images (time, x-axis, y-axis), each labeled with the `_ch%index%` suffix.
 - `median filter` - provides frame-by-frame image smoothing with a kernel of size specified in `median kernel`.
-- `background subtraction` -  compensates for background fluorescence intensity. Background intensity is estimated frame by frame as the 1st percentile of frame intensity.
+- `background subtraction` -  compensates for background fluorescence intensity. Background intensity is estimated frame by frame as the 0.5 percentile of frame intensity.
 - If the `photobleaching correction` option is selected, the image will undergo correction using either an exponential (method `exp`) or bi-exponential (method `bi_exp`) fitting.
 - Image stacks can be cropped according to start and stop indexes specified in `frames range` if `drop frames` is selected.
 
@@ -82,6 +82,20 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_masking.png)
 
 
+### Dots patterns masking
+Creates labels for bright dot elements on an image, such as pre- and postsynaptic fluorescence markers (e.g., Bassoon/Synaptobrevin for presynapses, PSD-95/Homer for postsynapses, etc.). It returns a labels layer with the `dots-labels` suffix.
+
+The widget detects the location on the MIP (Maximum Intensity Projection) of the input time series image and applies simple round masks to each detected dot. Watershed segmentation is then used to prevent the merging of overlapping masks.
+
+Parameters:
+
+- `background_level` - Background level for filtering out low-intensity elements. This is specified as a percentile of the MIP intensity.
+- `detection_level` - Minimum intensity of dots, specified as a percentile of the MIP's maximum intensity.
+- `mask_diameter` - Diameter in pixels for the round mask of each individual dot.
+- `minimal_distance` - Minimum distance in pixels between the centers of individual round masks.
+
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_making.png)
+
 ---
 
 
@@ -102,6 +116,7 @@ This method utilizes default values for `a` and `d` coefficients and the `G`-fac
 - Acceptor excitation wavelength 505 nm
 
 Parameters:
+
 - `DD img` - donor emission channel image acquired with the donor excitation wavelength.
 - `AD img` - acceptor emission channel image acquired with the donor excitation wavelength.
 - `AA img` - acceptor emission channel image acquired with the acceptor excitation wavelength.

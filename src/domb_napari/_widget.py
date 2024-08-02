@@ -327,14 +327,14 @@ def der_series(viewer: Viewer, img:Image,
 
 
 @magic_factory(call_button='Build Dots Mask',
-               background_level={"widget_type": "FloatSlider", 'min':5.0, 'max': 100.0, 'step':5.0},
-               detection_level={"widget_type": "FloatSlider",'min':5.0, 'max': 100.0, 'step':5.0},)
-def dot_mask_calc(viewer: Viewer, img:Image, mask_diamets:int=5, minimal_distance:int=2,
-                  background_level:float=95.0, detection_level:float=25.0):
+               background_level={"widget_type": "FloatSlider", 'min':50.0, 'max': 99.0, 'step':1.0},
+               detection_level={"widget_type": "FloatSlider",'min':1.0, 'max': 100.0, 'step':1.0},)
+def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detection_level:float=25.0,
+                  minimal_distance:int=2, mask_diamets:int=5):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
-        labels_name = img.name + '_dot-labels'
+        labels_name = img.name + '_dots-labels'
 
         def _save_dot_labels(params):
             lab = params[0]
