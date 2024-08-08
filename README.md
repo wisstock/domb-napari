@@ -62,6 +62,23 @@ If `save MIP` is selected, the maximal intensity projection (MIP) of the differe
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rg_series.png)
 
+---
+
+## Masking
+### Dots patterns masking
+Creates labels for bright dot elements on an image, such as pre- and postsynaptic fluorescence markers (e.g., Bassoon/Synaptobrevin for presynapses, PSD-95/Homer for postsynapses, etc.). It returns a labels layer with the `_dots-labels` suffix.
+
+The widget detects the location on the MIP (Maximum Intensity Projection) of the input time series image and applies simple round masks to each detected dot. Watershed segmentation is then used to prevent the merging of overlapping masks.
+
+Parameters:
+
+- `background_level` - Background level for filtering out low-intensity elements. This is specified as a percentile of the MIP intensity.
+- `detection_level` - Minimum intensity of dots, specified as a percentile of the MIP's maximum intensity.
+- `mask_diameter` - Diameter in pixels for the round mask of each individual dot.
+- `minimal_distance` - Minimum distance in pixels between the centers of individual round masks.
+
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_making.png)
+
 
 ### Up masking
 Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
@@ -80,21 +97,6 @@ Parameters:
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_masking.png)
-
-
-### Dots patterns masking
-Creates labels for bright dot elements on an image, such as pre- and postsynaptic fluorescence markers (e.g., Bassoon/Synaptobrevin for presynapses, PSD-95/Homer for postsynapses, etc.). It returns a labels layer with the `_dots-labels` suffix.
-
-The widget detects the location on the MIP (Maximum Intensity Projection) of the input time series image and applies simple round masks to each detected dot. Watershed segmentation is then used to prevent the merging of overlapping masks.
-
-Parameters:
-
-- `background_level` - Background level for filtering out low-intensity elements. This is specified as a percentile of the MIP intensity.
-- `detection_level` - Minimum intensity of dots, specified as a percentile of the MIP's maximum intensity.
-- `mask_diameter` - Diameter in pixels for the round mask of each individual dot.
-- `minimal_distance` - Minimum distance in pixels between the centers of individual round masks.
-
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_making.png)
 
 ---
 
@@ -160,11 +162,12 @@ This widget builds a plot with mean intensity profiles for each Region of Intere
 - `ΔF amplitude lim` - allows filtering of ROIs by minimum and maximum ΔF/F0 amplitudes. Note: Amplitude filtering works with ΔF/F0 profiles only.
 - `profiles crop` - if selected, only a specified range of intensity profile indexes will be plotted, corresponding to the start and stop indexes from `profiles range`.
 
-Additionally, you can save ROI intensity profiles as .csv files using the save data frame option and specifying the `saving path`. The output data frames named %img_name%_lab_prof.csv will include the following columns:
+Additionally, you can save ROI intensity profiles as .csv files using the `save data frame` option and specifying the `saving path`. The output data frames named %img_name%_lab_prof.csv will include the following columns:
 
 - `id` - unique image ID, the name of the input `napari.Image` object.
 - `roi` - ROI number, consecutively numbered starting from 1.
 - `int` - ROI mean intensity, either raw or ΔF/F0, according to the selected intensity option.
+- `dist` - average distance in px to the ROI from the frame, (if `save ROIs distances in data frame` option is selected).
 - `index` - frame index.
 - `time` - frame time point, adjusted according to the `time scale`.
 

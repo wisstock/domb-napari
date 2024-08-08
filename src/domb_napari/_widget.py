@@ -9,6 +9,7 @@ import pathlib
 import os
 
 import numpy as np
+from numpy import ma
 from scipy import ndimage as ndi
 from scipy import stats
 from scipy import signal
@@ -30,19 +31,6 @@ from dipy.align.imaffine import AffineRegistration
 
 from domb.utils import masking
 from domb.fret.e_fret import e_app
-
-
-def _red_green():
-     """ Red-green colormap
-
-     """
-     return vispy.color.Colormap([[0.0, 1.0, 0.0],
-                                  [0.0, 0.9, 0.0],
-                                  [0.0, 0.85, 0.0],
-                                  [0.0, 0.0, 0.0],
-                                  [0.85, 0.0, 0.0],
-                                  [0.9, 0.0, 0.0],
-                                  [1.0, 0.0, 0.0]])
 
 
 @magic_factory(call_button='Preprocess stack',
@@ -278,12 +266,24 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
 @magic_factory(call_button='Calc Red-Green')
 def der_series(viewer: Viewer, img:Image,
-               left_frames:int=2, space_frames:int=2, right_frames:int=2,
-               normalize_by_int:bool=False,
+               left_frames:int=1, space_frames:int=1, right_frames:int=1,
+               normalize_by_int:bool=True,
                save_MIP:bool=False):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
+
+        def _red_green():
+            """ Red-green colormap
+
+            """
+            return vispy.color.Colormap([[0.0, 1.0, 0.0],
+                                        [0.0, 0.9, 0.0],
+                                        [0.0, 0.85, 0.0],
+                                        [0.0, 0.0, 0.0],
+                                        [0.85, 0.0, 0.0],
+                                        [0.9, 0.0, 0.0],
+                                        [1.0, 0.0, 0.0]])
 
         def _save_rg_img(params):
             img = params[0]
@@ -377,16 +377,20 @@ def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detect
 
 
 @magic_factory(call_button='Build Up Mask',
-               insertion_threshold={"widget_type": "FloatSlider", 'max': 5},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
-def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
-                 insertion_threshold:float=0.2,
-                 opening_footprint:int=0,
-                 save_mask:bool=False):
+               detection_threshold={"widget_type": "FloatSlider", 'max': 1},
+               in_ROIs_detection_method={"choices": ['otsu', 'threshold']},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
+                 detection_frame_index:int=2,
+                 detection_threshold:float=0.25,
+                 in_ROIs_detection:bool=True,
+                 in_ROIs_detection_method:str='otsu',
+                 in_ROIs_detection_threshold:float=1,
+                 final_opening_footprint:int=1,
+                 final_dilation_footprint:int=0,
+                 save_total_up_mask:bool=False):
     if input is not None:
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
-        labels_name = img.name + '_up-labels'
-        mask_name = img.name + '_up-mask'
 
         def _save_up_labels(params):
             lab = params[0]
@@ -400,23 +404,53 @@ def up_mask_calc(viewer: Viewer, img:Image, detection_img_index:int=2,
         @thread_worker(connect={'yielded':_save_up_labels})
         def _up_mask_calc():
             input_img = img.data
-            detection_img = input_img[detection_img_index]
-            
-            up_mask = detection_img >= np.max(np.abs(detection_img)) * (insertion_threshold/50.0)
-            up_mask = morphology.erosion(up_mask, footprint=morphology.disk(2))
-            up_mask = morphology.dilation(up_mask, footprint=morphology.disk(1))
-            up_mask = ndi.binary_fill_holes(up_mask)
-            up_mask = up_mask.astype(int)
+            detection_img = input_img[detection_frame_index]
 
-            if opening_footprint != 0:
-                up_mask = morphology.opening(up_mask, footprint=morphology.disk(opening_footprint))
-                up_mask = morphology.dilation(up_mask, footprint=morphology.disk(1))
+            def up_detection(img, method, th, div, op_f, d_f):
+                if method == 'threshold':
+                    up_m = img > np.max(np.abs(img)) * (th*div)
+                    up_m = morphology.erosion(up_m, footprint=morphology.disk(2))
+                    up_m = morphology.dilation(up_m, footprint=morphology.disk(1))
+                    up_m = ndi.binary_fill_holes(up_m)
+                    up_m = up_m.astype(int)
+                elif method == 'otsu':
+                    up_m = img > filters.threshold_otsu(img)
+                if op_f != 0:
+                    up_m = morphology.opening(up_m, footprint=morphology.disk(op_f))
+                up_m = morphology.dilation(up_m, footprint=morphology.disk(d_f))
+                return up_m.astype(bool)
+
+            if in_ROIs_detection:
+                rois_mask = ROIs_mask.data
+                up_mask = np.zeros_like(rois_mask)
+                for roi_region in measure.regionprops(rois_mask):
+                    one_roi_box = roi_region.bbox
+                    one_roi_img = detection_img[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]]
+                    one_roi_input_mask = rois_mask[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] 
+                    one_roi_mask = up_detection(img=one_roi_img,
+                                                method=in_ROIs_detection_method,
+                                                th=detection_threshold,
+                                                div=in_ROIs_detection_threshold,
+                                                op_f=final_opening_footprint,
+                                                d_f=final_dilation_footprint)
+                    one_roi_mask[~one_roi_input_mask] = 0
+                    one_roi_mask = one_roi_mask * roi_region.label
+                    up_mask[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] = one_roi_mask
+            else:
+                up_mask = up_detection(img=detection_img,
+                                       method='threshold',
+                                       th=detection_threshold/10,
+                                       div=1.,
+                                       op_f=final_opening_footprint,
+                                       d_f=final_dilation_footprint)
 
             up_labels = measure.label(up_mask)
             show_info(f'{img.name}: detected {np.max(up_labels)} labels')
 
+            labels_name = img.name + '_up-labels'
             yield (up_labels, labels_name)
-            if save_mask:
+            if save_total_up_mask:
+                mask_name = img.name + '_up-mask'
                 yield (up_mask, mask_name)
 
         _up_mask_calc()                
