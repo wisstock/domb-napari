@@ -25,9 +25,12 @@ contributions:
     - id: domb-napari.labels_profiles_set_widget
       title: ROIs profiles
       python_name: domb_napari._widget:labels_profile_line
-    - id: domb-napari.labels_profile_widget
-      title: Stat profiles
-      python_name: domb_napari._widget:labels_profile_stat
+    - id: domb-napari.labels_multi_profile_widget
+      title: Multiple img stat profiles
+      python_name: domb_napari._widget:labels_multi_profile_stat
+    - id: domb-napari.multi_labels_profile_widget
+      title: Multiple labels stat profiles
+      python_name: domb_napari._widget:multi_labels_profile_stat
     - id: domb-napari.dot_mask_widget
       title: Dot-patterns masking
       python_name: domb_napari._widget:dot_mask_calc
@@ -50,5 +53,8 @@ contributions:
       display_name: Intensity masking
     - command: domb-napari.labels_profiles_set_widget
       display_name: ROIs profiles
-    - command: domb-napari.labels_profile_widget
-      display_name: Stat profiles
+    - command: domb-napari.labels_multi_profile_widget
+      display_name: Multiple img stat profiles
+    - command: domb-napari.multi_labels_profile_widget
+      display_name: Multiple labels stat profiles
+

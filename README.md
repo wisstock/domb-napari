@@ -77,26 +77,32 @@ Parameters:
 - `mask_diameter` - Diameter in pixels for the round mask of each individual dot.
 - `minimal_distance` - Minimum distance in pixels between the centers of individual round masks.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_making.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_masking.png)
 
 
 ### Up masking
-Generates labels for insertion sites (regions with increasing intensity) based on `-red-green` images. Returns labels layer with `_up-labels` suffix.
+Generates labels for regions with higher intensity based on simpe or `-red-green` images. Returns labels layer with `_up-labels` suffix.
 
 Parameters:
 
-- `detection img index` - index of the frame from `-red-green` image used for insertion sites detection.
-- `insertion threshold` - threshold value for insertion site detection, intensity on selected `_red-green` frame normalized in -1 - 0 range.
-- `opening footprint` - footprint size in pixels for mask filtering with morphology opening (disabled if 0).
-- `save mask` - if selected, a total up mask (containing all ROIs) will be created with the `_up-mask` suffix.
+- `det frame index` - index of the frame from input image used for labels detection.
+- `det th` - threshold value for insertion site detection, intensity on selected frame normalized in -1 - 0 range.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_masking.png)
+- `in ROIs det` - 
+- `in ROIs det method` -
+- `in_ROIs_det_th_corr` - 
+
+- `final opening fp` - footprint size in pixels for mask filtering with morphology opening (disabled if 0).
+- `final dilation fp` - - footprint size in pixels for mask morphology dilation (disabled if 0).
+- `save total up mask` - if selected, a total up mask (containing all ROIs) will be created with the `_up-mask` suffix.
+
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels.png)
 
 
 ### Intensity masking
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
-![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_masking.png)
+![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_labels.png)
 
 ---
 
@@ -179,7 +185,7 @@ __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/ima
 
 
 ### Stat profiles
-This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) specified in `labels`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
+This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) specified in `lab`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
 
 `time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
 

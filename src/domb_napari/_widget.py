@@ -377,16 +377,16 @@ def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detect
 
 
 @magic_factory(call_button='Build Up Mask',
-               detection_threshold={"widget_type": "FloatSlider", 'max': 1},
-               in_ROIs_detection_method={"choices": ['otsu', 'threshold']},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
+               det_th={"widget_type": "FloatSlider", 'max': 1},
+               in_ROIs_det_method={"choices": ['otsu', 'threshold']},)  # insertions_threshold={'widget_type': 'FloatSlider', 'max': 1}
 def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
-                 detection_frame_index:int=2,
-                 detection_threshold:float=0.25,
-                 in_ROIs_detection:bool=True,
-                 in_ROIs_detection_method:str='otsu',
-                 in_ROIs_detection_threshold:float=1,
-                 final_opening_footprint:int=1,
-                 final_dilation_footprint:int=0,
+                 det_frame_index:int=2,
+                 det_th:float=0.25,
+                 in_ROIs_det:bool=True,
+                 in_ROIs_det_method:str='otsu',
+                 in_ROIs_det_th_corr:float=0.1,
+                 final_opening_fp:int=1,
+                 final_dilation_fp:int=0,
                  save_total_up_mask:bool=False):
     if input is not None:
         if img.data.ndim != 3:
@@ -404,7 +404,7 @@ def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
         @thread_worker(connect={'yielded':_save_up_labels})
         def _up_mask_calc():
             input_img = img.data
-            detection_img = input_img[detection_frame_index]
+            detection_img = input_img[det_frame_index]
 
             def up_detection(img, method, th, div, op_f, d_f):
                 if method == 'threshold':
@@ -420,32 +420,34 @@ def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
                 up_m = morphology.dilation(up_m, footprint=morphology.disk(d_f))
                 return up_m.astype(bool)
 
-            if in_ROIs_detection:
+            if in_ROIs_det:
                 rois_mask = ROIs_mask.data
-                up_mask = np.zeros_like(rois_mask)
+                up_labels = np.zeros_like(rois_mask)
                 for roi_region in measure.regionprops(rois_mask):
                     one_roi_box = roi_region.bbox
                     one_roi_img = detection_img[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]]
-                    one_roi_input_mask = rois_mask[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] 
+                    one_roi_input_mask = rois_mask[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] == 0
+
                     one_roi_mask = up_detection(img=one_roi_img,
-                                                method=in_ROIs_detection_method,
-                                                th=detection_threshold,
-                                                div=in_ROIs_detection_threshold,
-                                                op_f=final_opening_footprint,
-                                                d_f=final_dilation_footprint)
-                    one_roi_mask[~one_roi_input_mask] = 0
+                                                method=in_ROIs_det_method,
+                                                th=det_th,
+                                                div=in_ROIs_det_th_corr,
+                                                op_f=final_opening_fp,
+                                                d_f=final_dilation_fp)
+                    one_roi_mask[one_roi_input_mask] = 0
                     one_roi_mask = one_roi_mask * roi_region.label
-                    up_mask[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] = one_roi_mask
+                    up_labels[one_roi_box[0]:one_roi_box[2],one_roi_box[1]:one_roi_box[3]] = one_roi_mask
+                    up_mask = up_labels > 0
             else:
                 up_mask = up_detection(img=detection_img,
                                        method='threshold',
-                                       th=detection_threshold/10,
-                                       div=1.,
-                                       op_f=final_opening_footprint,
-                                       d_f=final_dilation_footprint)
+                                       th=det_th,
+                                       div=0.1,
+                                       op_f=final_opening_fp,
+                                       d_f=final_dilation_fp)
+                up_labels = measure.label(up_mask)
 
-            up_labels = measure.label(up_mask)
-            show_info(f'{img.name}: detected {np.max(up_labels)} labels')
+            show_info(f'{img.name}: detected {np.max(measure.label(up_mask))} labels')
 
             labels_name = img.name + '_up-labels'
             yield (up_labels, labels_name)
@@ -458,7 +460,7 @@ def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
 
 @magic_factory(call_button='Build Mask',
                masking_mode={"choices": ['up', 'down']},)
-def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
+def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
               masking_mode:str='up',
               up_threshold:float=0.2,
               down_threshold:float=-0.9,
@@ -484,7 +486,7 @@ def mask_calc(viewer: Viewer, img:Image, detection_frame_index:int=2,
         @thread_worker(connect={'yielded':_save_rg_labels})
         def _mask_calc():
             input_img = img.data
-            detection_img = input_img[detection_frame_index]
+            detection_img = input_img[det_frame_index]
 
             if masking_mode == 'up':
                 mask = detection_img >= np.max(np.abs(detection_img)) * up_threshold
@@ -617,16 +619,16 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='ROIs Prof.')
 
 
-@magic_factory(call_button='Build Profile',
+@magic_factory(call_button='Build Profiles',
                stat_method={"choices": ['se', 'iqr', 'ci']},
                profiles_num={"choices": ['1', '2', '3']},)
-def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
-                        labels:Labels,
-                        profiles_num:str='1',
-                        absolute_intensity:bool=False, 
-                        time_scale:float=5.0,
-                        ΔF_win:int=5,
-                        stat_method:str='se'):
+def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
+                              lab:Labels,
+                              profiles_num:str='1',
+                              absolute_intensity:bool=False, 
+                              time_scale:float=5.0,
+                              ΔF_win:int=5,
+                              stat_method:str='se'):
     if input is not None:
         # mean, se
         arr_se_stat = lambda x: (np.mean(x, axis=0), \
@@ -644,7 +646,7 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
 
         # processing
         input_img_0 = img_0.data
-        input_labels = labels.data
+        input_labels = lab.data
         
         profile_dF_0, profile_raw_0 = masking.label_prof_arr(input_label=input_labels,
                                                              input_img_series=input_img_0,
@@ -710,8 +712,105 @@ def labels_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
                         alpha=0.75, color='blue')
         
         plt.legend()
-        plt.title(f'{labels.name}, method {stat_method}')
-        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Stat Prof.')
+        plt.title(f'{lab.name}, method {stat_method}')
+        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Img Stat Prof.')
+
+
+@magic_factory(call_button='Build Profiles',
+               stat_method={"choices": ['se', 'iqr', 'ci']},
+               labels_num={"choices": ['1', '2', '3']},)
+def multi_labels_profile_stat(viewer: Viewer, img:Image,
+                        lab_0:Labels, lab_1:Labels, lab_2:Labels,
+                        labels_num:str='1',
+                        absolute_intensity:bool=False, 
+                        time_scale:float=5.0,
+                        ΔF_win:int=5,
+                        stat_method:str='se'):
+    if input is not None:
+        # mean, se
+        arr_se_stat = lambda x: (np.mean(x, axis=0), \
+                                 np.std(x, axis=0)/np.sqrt(x.shape[1]))
+        # meadian, IQR
+        arr_iqr_stat = lambda x: (np.median(x, axis=0), \
+                                  stats.iqr(x, axis=0))
+        # mean, CI
+        arr_ci_stat = lambda x, alpha=0.05: (np.mean(x, axis=0), \
+                                             stats.t.ppf(1-alpha/2, df=x.shape[1]-1) \
+                                                         *np.std(x, axis=0, ddof=1)/np.sqrt(x.shape[1]))
+        stat_dict = {'se':arr_se_stat,
+                     'iqr':arr_iqr_stat,
+                     'ci':arr_ci_stat}
+
+        # processing
+        input_img = img.data
+        input_lab_0 = lab_0.data
+        
+        profile_dF_0, profile_raw_0 = masking.label_prof_arr(input_label=input_lab_0,
+                                                             input_img_series=input_img,
+                                                             f0_win=ΔF_win)
+        if absolute_intensity:
+            selected_profile_0  = profile_raw_0
+            ylab = 'I'
+        else:
+            selected_profile_0  = profile_dF_0
+            ylab = 'ΔF/F0'
+        arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
+
+        if labels_num == '2' or labels_num == '3':
+            input_lab_1 = lab_1.data
+            profile_dF_1, profile_raw_1 = masking.label_prof_arr(input_label=input_lab_1,
+                                                                 input_img_series=input_img,
+                                                                 f0_win=ΔF_win)
+            if absolute_intensity:
+                selected_profile_1  = profile_raw_1
+            else:
+                selected_profile_1  = profile_dF_1
+            arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
+
+        if labels_num == '3':
+            input_lab_2 = lab_2.data
+            profile_dF_2, profile_raw_2 = masking.label_prof_arr(input_label=input_lab_2,
+                                                                 input_img_series=input_img,
+                                                                 f0_win=ΔF_win)
+            if absolute_intensity:
+                selected_profile_2  = profile_raw_2
+            else:
+                selected_profile_2  = profile_dF_2
+            arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
+
+        # plotting
+        time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
+                                num=input_img.shape[0])
+        
+        mpl_fig = plt.figure()
+        ax = mpl_fig.add_subplot(111)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        ax.grid(color='grey', linewidth=.25)
+        ax.set_xlabel('Time, s')
+        ax.set_ylabel(ylab)
+
+        ax.errorbar(time_line, arr_val_0,
+                    yerr = arr_var_0,
+                    fmt ='-o', capsize=2, label=lab_0.name,
+                    alpha=0.75, color='black')
+        
+        if labels_num == '2' or labels_num == '3':
+            ax.errorbar(time_line, arr_val_1,
+                        yerr = arr_var_1,
+                        fmt ='-o', capsize=2, label=lab_1.name,
+                        alpha=0.75, color='red')
+
+        if labels_num == '3':
+            ax.errorbar(time_line, arr_val_2,
+                        yerr = arr_var_2,
+                        fmt ='-o', capsize=2, label=lab_2.name,
+                        alpha=0.75, color='blue')
+        
+        plt.legend()
+        plt.title(f'{img.name}, method {stat_method}')
+        viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Lab Stat Prof.')
 
 
 if __name__ == '__main__':
