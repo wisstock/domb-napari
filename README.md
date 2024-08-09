@@ -72,31 +72,45 @@ The widget detects the location on the MIP (Maximum Intensity Projection) of the
 
 Parameters:
 
-- `background_level` - Background level for filtering out low-intensity elements. This is specified as a percentile of the MIP intensity.
-- `detection_level` - Minimum intensity of dots, specified as a percentile of the MIP's maximum intensity.
-- `mask_diameter` - Diameter in pixels for the round mask of each individual dot.
-- `minimal_distance` - Minimum distance in pixels between the centers of individual round masks.
+- `background level` - Background level for filtering out low-intensity elements. This is specified as a percentile of the MIP intensity.
+- `detection level` - Minimum intensity of dots, specified as a percentile of the MIP's maximum intensity.
+- `mask diameter` - Diameter in pixels for the round mask of each individual dot.
+- `minimal distance` - Minimum distance in pixels between the centers of individual round masks.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/dots_masking.png)
+__Hippocalcin (green) and PSD95 (magents) in dendritic branches__
 
 
 ### Up masking
-Generates labels for regions with higher intensity based on simpe or `-red-green` images. Returns labels layer with `_up-labels` suffix.
+Generates labels for regions with high intensity based on raw or -red-green images. Returns a labels layer with the `_up-labels` suffix.
+
+The widget provides two detection modes:
+
+- Global masking with a fixed threshold for the entire image.
+- In-ROIs masking with a loop over individual ROIs in the input `ROIs mask` with separate detections.
 
 Parameters:
 
-- `det frame index` - index of the frame from input image used for labels detection.
-- `det th` - threshold value for insertion site detection, intensity on selected frame normalized in -1 - 0 range.
-
-- `in ROIs det` - 
-- `in ROIs det method` -
-- `in_ROIs_det_th_corr` - 
-
-- `final opening fp` - footprint size in pixels for mask filtering with morphology opening (disabled if 0).
-- `final dilation fp` - - footprint size in pixels for mask morphology dilation (disabled if 0).
-- `save total up mask` - if selected, a total up mask (containing all ROIs) will be created with the `_up-mask` suffix.
+- `det frame index` - index of the frame from the input image used for label detection.
+- `det th` - treshold value for detecting bright sites, where the intensity on the selected frame is normalized in the range of -1 to 0.
+- `in ROIs det` - option for activating in-ROIs masking.
+- `in ROIs det method` - method for in-ROIs masking; otsu provides simple Otsu thresholding, while the threshold method is identical to global detection on nomilized detection frame.
+- `in_ROIs_det_th_corr` - caling factor for the det th threshold value for in-ROIs masking.
+- `final opening fp` - footprint size in pixels for mask filtering using morphological opening (disabled if set to 0).
+- `final dilation fp` - footprint size in pixels for mask morphological dilation (disabled if set to 0).
+- `save total up mask` - if selected, a total up mask (containing all ROIs) will be created with the _up-mask suffix.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels.png)
+__Gplobal up labels__
+
+The In-ROIs masking option can be particularly useful for co-localization detection. By applying a broad reference mask to several target images, you can create more precise labels for ROIs in specified cell compartments. The following examples demonstrate the detection of mutual locations for static PSD-95 enriched sites (postsynaptic membranes) and HPCA translocation sites only in the vicinity of synapses, using `_dots-labels` for PSD95-mRFP images.
+
+_Note: In the In-ROIs masking mode, labels of detected sites correspond to the matching labels from the input ROIs mask._
+
+In-ROIs masking (reference)|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_1.png)
+:------------------:|:-------------------------:
+__In-ROIs maskin (translocation)__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_2.png)
+__Masks overlay__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_overlay.png)
 
 
 ### Intensity masking
@@ -105,7 +119,6 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_labels.png)
 
 ---
-
 
 ## FRET detection
 Widgets for detection and analysis of Förster resonance energy transfer multispectral image stacks.
@@ -184,7 +197,7 @@ Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rois_df.png)
 
 
-### Stat profiles
+### Multiple images stat profiles
 This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) specified in `lab`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
 
 `time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
@@ -197,3 +210,18 @@ The `stat method` allows for the estimation of intensity and associated errors t
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_abs.png)
 :-------------------------:|:-------------------------:
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_df.png)
+
+
+### Multiple labels stat profiles
+This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) for one target `img`. It can handle up to three labels (`lab 0`, `lab 1`, and `lab 2`), depending on the selected `profiles num`.
+
+`time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
+
+The `stat method` allows for the estimation of intensity and associated errors through the following methods:
+- `se` - mean +/- standard error of the mean.
+- `iqr` - median +/- interquartile range.
+- `ci` - mean +/- 95% confidence interval based on the t-distribution.
+
+Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_abs.png)
+:-------------------------:|:-------------------------:
+__ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_df.png)
