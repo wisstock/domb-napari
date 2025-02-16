@@ -10,6 +10,9 @@ contributions:
     - id: domb-napari.split_sep_widget
       title: SEP image preprocessing
       python_name: domb_napari._widget:split_sep
+    - id: domb-napari.cross_calc_widget
+      title: E-FRET crosstalk estimation
+      python_name: domb_napari._widget:cross_calc
     - id: domb-napari.e_app_widget
       title: E-FRET estimation
       python_name: domb_napari._widget:e_app_calc
@@ -41,6 +44,8 @@ contributions:
       display_name: Multichannel stack preprocessing
     - command: domb-napari.der_series_widget
       display_name: Red-green series
+    - command: domb-napari.cross_calc_widget
+      display_name: E-FRET crosstalk estimation
     - command: domb-napari.e_app_widget
       display_name: E-FRET estimation
     - command: domb-napari.split_sep_widget

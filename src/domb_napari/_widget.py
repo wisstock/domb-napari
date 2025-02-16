@@ -8,11 +8,11 @@ from napari.qt.threading import thread_worker
 import pathlib
 import os
 
+import pandas as pd
 import numpy as np
 from numpy import ma
 from scipy import ndimage as ndi
 from scipy import stats
-from scipy import signal
 
 from skimage import filters
 from skimage import morphology
@@ -220,7 +220,88 @@ def split_sep(viewer: Viewer, img:Image,
             raise ValueError('The input image should have 3 dimensions!')
 
 
-@magic_factory(call_button='Calc E-FRET',
+@magic_factory(call_button='Estimate crosstalk',
+               presented_fluorophore={"choices": ['A', 'D']},
+               saving_path={'mode': 'd'})
+def cross_calc(DD_img:Image, DA_img:Image, AA_img:Image, AD_img:Image,
+               mask: Labels,
+               presented_fluorophore:str='A',
+               saving_path:pathlib.Path = os.getcwd()):
+    if input is not None:
+        if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3) and (AD_img.data.ndim == 3):
+
+            def _save_cross_data(output_df):
+                df_name = f"{AA_img.name}_{presented_fluorophore}_coef.csv"
+                output_df.to_csv(os.path.join(saving_path, df_name))
+
+            @thread_worker(connect={'yielded':_save_cross_data})
+            def _cross_calc():
+                output_name = AA_img.name.replace('_ch3','')
+
+                input_labels = mask.data
+                input_mask = input_labels != 0
+                
+                def c_calc(img_ref, img_prm, img_off, img_mask, c_prm_name, c_off_name, img_name):
+                    col_list = ['id', 'frame_n',
+                                c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
+                                c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
+                    c_df = pd.DataFrame(columns=col_list)
+
+                    for i in range(len(img_ref)):
+                        arr_ref = ma.masked_array(img_ref[i], mask=~img_mask).compressed()
+                        arr_prm = ma.masked_array(img_prm[i], mask=~img_mask).compressed()
+                        arr_off = ma.masked_array(img_off[i], mask=~img_mask).compressed()
+
+                        c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
+                        c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
+
+                        row_dict =  {'id': img_name,
+                                     'frame_n': i,
+                                     c_prm_name+'_val': c_prm_fit.slope,
+                                     c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
+                                     c_prm_name+'_err': c_prm_fit.stderr,
+                                     c_prm_name+'_i': c_prm_fit.intercept,
+                                     c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
+                                     c_prm_name+'_r^2': c_prm_fit.rvalue,
+                                     c_off_name+'_val': c_off_fit.slope,
+                                     c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
+                                     c_off_name+'_err': c_off_fit.stderr,
+                                     c_off_name+'_i': c_off_fit.intercept,
+                                     c_off_name+'_i_err': c_off_fit.intercept_stderr,
+                                     c_off_name+'_r^2': c_off_fit.rvalue}      
+                        row_df = pd.DataFrame(row_dict, index=[0])
+                        c_df = pd.concat([c_df.astype(row_df.dtypes),
+                                          row_df.astype(c_df.dtypes)],
+                                          ignore_index=True)
+                    return c_df
+
+                if presented_fluorophore == 'A':
+                    coef_df = c_calc(img_ref = AA_img.data,
+                                     img_prm = DA_img.data,
+                                     img_off = DD_img.data,
+                                     img_mask = input_mask,
+                                     c_prm_name = 'a',
+                                     c_off_name = 'b',
+                                     img_name = output_name)
+                if presented_fluorophore == 'D':
+                    coef_df = c_calc(img_ref = DD_img.data,
+                                     img_prm = DA_img.data,
+                                     img_off = AA_img.data,
+                                     img_mask = input_mask,
+                                     c_prm_name = 'd',
+                                     c_off_name = 'c',
+                                     img_name = output_name)
+                
+                show_info(f'{output_name}: {presented_fluorophore} coeficients saved')
+                yield coef_df
+
+            _cross_calc()
+
+    else:
+        raise ValueError('Incorrect input image shape!')
+    
+
+@magic_factory(call_button='Estimate E-FRET',
                output_type={"choices": ['Eapp', 'Ecorr', 'Fc']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                a:float=0.122, d:float=0.794, G:float=3.6,
@@ -382,7 +463,7 @@ def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detect
 def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
                  det_frame_index:int=2,
                  det_th:float=0.25,
-                 in_ROIs_det:bool=True,
+                 in_ROIs_det:bool=False,
                  in_ROIs_det_method:str='otsu',
                  in_ROIs_det_th_corr:float=0.1,
                  final_opening_fp:int=1,
@@ -560,7 +641,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
 
         profile_to_plot = []
         if absolute_intensity:
-            profile_to_plot = np.round(profile_raw)
+            profile_to_plot = np.round(profile_raw, decimals=4)
             ylab = 'Intensity, a.u.'
             df_name = df_name + '_abs'
         else:
@@ -569,7 +650,6 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
             df_name = df_name + '_ΔF'
 
         if save_data_frame:
-            import pandas as pd
             output_df = pd.DataFrame(columns=col_list)
 
             for num_ROI in range(profile_to_plot.shape[0]):

@@ -6,6 +6,7 @@ domb-napari
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/domb-napari)](https://napari-hub.org/plugins/domb-napari)
 ![PyPI - Version](https://img.shields.io/pypi/v/domb-napari)
 ![PyPI - License](https://img.shields.io/pypi/l/domb-napari)
+[![DOI](https://zenodo.org/badge/722100876.svg)](https://doi.org/10.5281/zenodo.14843770)
 <!-- ![Website](https://img.shields.io/website?up_message=domb.bio%2Fnapari&up_color=%2323038C93&url=https%3A%2F%2Fdomb.bio%2Fnapari%2F) -->
 
 __napari Toolkit of Department of Molecular Biophysics <br /> Bogomoletz Institute of Physiology of NAS of Ukraine, Kyiv,  Ukraine__
@@ -22,14 +23,10 @@ __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon
 ---
 
 
-## Detection of fluorescence redistributions
-A set of widgets designed for preprocessing multispectral image stacks and detecting redistributions in fluorescence intensity. These widgets specifically analyze differential "red-green" image series to identify changes in fluorescence intensity.
 
-Inspired by [Dovgan et al., 2010](https://pubmed.ncbi.nlm.nih.gov/20704590/) and [Osypenko et al., 2019](https://www.sciencedirect.com/science/article/pii/S0969996119301974?via%3Dihub).
-
-
-### Dual-view stack registration
-Registration of four-channel image stacks, including two excitation wavelengths and two emission pathbands, acquired with a dual-view beam splitter. This setup detects different spectral pathbands using distinct sides of the CCD matrix.
+## Preprocessing
+### Dual-view Stack Registration
+Registration of four-channel image stacks, including two excitation wavelengths and two emission pathbands, acquired with a dual-view beam splitter. This setup detects different spectral pathbands using distinct sides of the camera matrix.
 
 - `offset img` - input for a four-channel time-lapse image stack.
 - `reference img` - an optional four-channel reference image (e.g., fluorescence beads image), used for offset estimation if `use reference img` is selected.
@@ -37,7 +34,7 @@ Registration of four-channel image stacks, including two excitation wavelengths 
 - `output crop` - number of pixels that will be deleted from each side of output stack frames to discard registration artifacts.
 
 
-### Multichannel stack preprocessing
+### Multichannel Stack Preprocessing
 - `stack order` -  represents the order of axes in the input data array: T (time), C (color), X, and Y (image dimensions). If the input image stack has four dimensions (time, channel, x-axis, y-axis), channels will be split into individual three-dimensional images (time, x-axis, y-axis), each labeled with the `_ch%index%` suffix.
 - `median filter` - provides frame-by-frame image smoothing with a kernel of size specified in `median kernel`.
 - `background subtraction` -  compensates for background fluorescence intensity. Background intensity is estimated frame by frame as the 0.5 percentile of frame intensity.
@@ -46,8 +43,14 @@ Registration of four-channel image stacks, including two excitation wavelengths 
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stack_preprocessing.png)
 
+---
 
-### Red-green series
+## Detection of Fluorescence Redistribution
+A set of widgets designed for preprocessing multispectral image stacks and detecting redistributions in fluorescence intensity. These widgets specifically analyze differential "red-green" image series to identify changes in fluorescence intensity.
+
+Inspired by [Dovgan et al., 2010](https://pubmed.ncbi.nlm.nih.gov/20704590/) and [Osypenko et al., 2019](https://www.sciencedirect.com/science/article/pii/S0969996119301974?via%3Dihub).
+
+### Red-Green Series
 Primary method for detecting fluorescence-labeled targets redistribution. This widget returns a series of differential images, each representing the intensity difference between the current frame and the previous one, output image labeled with the `_red-green` suffix.
 
 Parameters:
@@ -62,10 +65,13 @@ If `save MIP` is selected, the maximal intensity projection (MIP) of the differe
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rg_series.png)
 
+### ΔF/F Series
+_In progress._
+
 ---
 
 ## Masking
-### Dots patterns masking
+### Dots Pattern Masking
 Creates labels for bright dot elements on an image, such as pre- and postsynaptic fluorescence markers (e.g., Bassoon/Synaptobrevin for presynapses, PSD-95/Homer for postsynapses, etc.). It returns a labels layer with the `_dots-labels` suffix.
 
 The widget detects the location on the MIP (Maximum Intensity Projection) of the input time series image and applies simple round masks to each detected dot. Watershed segmentation is then used to prevent the merging of overlapping masks.
@@ -81,7 +87,7 @@ Parameters:
 __Hippocalcin (green) and PSD95 (magents) in dendritic branches__
 
 
-### Up masking
+### Up Masking
 Generates labels for regions with high intensity based on raw or -red-green images. Returns a labels layer with the `_up-labels` suffix.
 
 The widget provides two detection modes:
@@ -113,7 +119,7 @@ __In-ROIs maskin (translocation)__|![](https://raw.githubusercontent.com/wisstoc
 __Masks overlay__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_overlay.png)
 
 
-### Intensity masking
+### Intensity Masking
 Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_labels.png)
@@ -123,18 +129,62 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 ## FRET detection
 Widgets for detection and analysis of Förster resonance energy transfer multispectral image stacks.
 
-Based on [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
+Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
 
 
-### E-FRET estimation
+### E-FRET Crosstalk Calibration
+_In progress._
+
+```math
+F_c = I_{DA} - a (I_{AA} - c I_{DD}) - d (I_{DD} - b I_{AA}) \\ \\
+
+F_c = I_{DA} - a I_{AA} - d I_{DD} \; \text{if} \; b \approx c \approx 0 \\ \\
+
+a = \frac{I_{DA(A)}}{I_{AA(A)}} \;
+b = \frac{I_{DD(A)}}{I_{AA(A)}} \\ \\
+c = \frac{I_{AA(D)}} {I_{DD(D)}} \;
+d = \frac{I_{DA(D)}} {I_{DD(D)}} \\ \\
+b \approx c \approx 0
+```
+
+### E-FRET G-factor Calibration
+_In progress._ 
+
+```math
+G = \frac{F_c}{I_{DD}^{post} - I_{DD}} = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} \\ \\
+
+\Delta I_{DD} = G \cdot \Delta F_c
+```
+
+### E-FRET Estimation
+
 E-FRET estimation with 3-cube approach.
 
-This method utilizes default values for `a` and `d` coefficients and the `G`-factor, optimized for the pair EYFP and ECFP in our experimental setup:
+```math
+E_{app} = \frac{R}{R+G} \\ \\ R = \frac{F_c}{I_{DD}}
+```
+
+
+
+__ECFP and EYFP Setup:__
+
 - Microscope Olympus IX71
+- Camera Sensicam QE
 - Cube Chroma 69008
 - Dual-view system with Chroma 505DCXR beam splitter
 - Donor excitation wavelength 435 nm
 - Acceptor excitation wavelength 505 nm
+
+__TagBFP and mBaoJin Setup:__
+
+- Microscope Olympus IX71
+- Camera Sensicam QE
+- Cube Chroma 69009
+- Dual-view system with Chroma 505DCXR beam splitter
+- Donor excitation wavelength 405 nm
+- Acceptor excitation wavelength 495 nm
+
+This method utilizes default values of `a` and `d` coefficients and the `G`-factor for TagBFP and mBaoJin pair. 
 
 Parameters:
 
@@ -155,7 +205,7 @@ __Normalized Eapp__|![](https://raw.githubusercontent.com/wisstock/domb-napari/m
 ---
 
 
-## Exo-/endo-cytosis monitoring with pH-sensitive tag
+## Exo/Endo-cytosis Monitoring with pH-Sensitive Tag
 A set of widgets designed for the analysis of image series containing the pH-sensitive fluorescence protein Superecliptic pHluorin (SEP).
 
 Insipred by [Fujii et al., 2017](https://pubmed.ncbi.nlm.nih.gov/28474392/) and [Sposini et al., 2020](https://www.nature.com/articles/s41596-020-0371-z).
@@ -172,8 +222,8 @@ The `calc projections` option allows obtaining individual pH series projections 
 ---
 
 
-## Intensty profiles building and data frame saving
-### ROIs profiles
+## Intensty Profiles and Data Frame Saving
+### ROIs Profiles
 This widget builds a plot with mean intensity profiles for each Region of Interest (ROI) in labels. It uses either absolute intensity (if `absolute intensity` is selected) or relative intensities (ΔF/F0).
 
 - `time scale` - sets the number of seconds between frames for x-axis scaling.
@@ -197,7 +247,7 @@ Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rois_df.png)
 
 
-### Multiple images stat profiles
+### Multiple Images Stat Profiles
 This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) specified in `lab`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
 
 `time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
@@ -212,7 +262,7 @@ Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_df.png)
 
 
-### Multiple labels stat profiles
+### Multiple Labels Stat Profiles
 This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) for one target `img`. It can handle up to three labels (`lab 0`, `lab 1`, and `lab 2`), depending on the selected `profiles num`.
 
 `time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
