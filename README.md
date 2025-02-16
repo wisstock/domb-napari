@@ -132,36 +132,69 @@ Widgets for detection and analysis of Förster resonance energy transfer multisp
 Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
 
 
-### E-FRET Crosstalk Calibration
-_In progress._
+### E-FRET Crosstalk Estimation
+Estimation of the crosstalk/bleedthrough of fluorescence between the donor and acceptor’s spectral channels.
 
 ```math
-F_c = I_{DA} - a (I_{AA} - c I_{DD}) - d (I_{DD} - b I_{AA}) \\ \\
+F_c = I_{DA} - a (I_{AA} - c I_{DD}) - d (I_{DD} - b I_{AA})
+```
 
-F_c = I_{DA} - a I_{AA} - d I_{DD} \; \text{if} \; b \approx c \approx 0 \\ \\
+```math
+F_c = I_{DA} - a I_{AA} - d I_{DD} \; \text{if} \; b \approx c \approx 0
+```
 
-a = \frac{I_{DA(A)}}{I_{AA(A)}} \;
-b = \frac{I_{DD(A)}}{I_{AA(A)}} \\ \\
-c = \frac{I_{AA(D)}} {I_{DD(D)}} \;
-d = \frac{I_{DA(D)}} {I_{DD(D)}} \\ \\
+```math
+a = \frac{I_{DA(A)}}{I_{AA(A)}}
+```
+
+```math
+b = \frac{I_{DD(A)}}{I_{AA(A)}}
+```
+
+```math
+c = \frac{I_{AA(D)}} {I_{DD(D)}}
+```
+
+```math
+d = \frac{I_{DA(D)}} {I_{DD(D)}}
+```
+
+```math
 b \approx c \approx 0
 ```
 
-### E-FRET G-factor Calibration
+Parameters:
+- `DD img` - donor emission channel image acquired with the donor excitation wavelength.
+- `DA img` - donor emission channel image acquired with the acceptor excitation wavelength.
+- `AD img` - acceptor emission channel image acquired with the donor excitation wavelength.
+- `AA img` - acceptor emission channel image acquired with the acceptor excitation wavelength.
+- `mask` - .
+- `presented_fluorophore` - .
+- `saving_path` - .
+
+
+### E-FRET G-factor Estimation
 _In progress._ 
 
 ```math
 G = \frac{F_c}{I_{DD}^{post} - I_{DD}} = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} \\ \\
+```
 
+
+```math
 \Delta I_{DD} = G \cdot \Delta F_c
 ```
 
 ### E-FRET Estimation
 
-E-FRET estimation with 3-cube approach.
+Estimation of the E-FRET with 3-cube approach.
 
 ```math
-E_{app} = \frac{R}{R+G} \\ \\ R = \frac{F_c}{I_{DD}}
+E_{app} = \frac{R}{R+G}
+```
+
+```math
+R = \frac{F_c}{I_{DD}}
 ```
 
 
