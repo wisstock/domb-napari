@@ -126,7 +126,7 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 
 ---
 
-## FRET detection
+## FRET Detection
 Widgets for detection and analysis of Förster resonance energy transfer multispectral image stacks.
 
 Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
@@ -177,12 +177,12 @@ Parameters:
 _In progress._ 
 
 ```math
-G = \frac{F_c}{I_{DD}^{post} - I_{DD}} = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} \\ \\
+G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} = \frac{F_c - F_{c}^{post}}{I_{DD}^{post} - I_{DD}} = \frac{\Delta F_c}{\Delta I_{DD}}
 ```
 
 
 ```math
-\Delta I_{DD} = G \cdot \Delta F_c
+\Delta F_c = G \cdot \Delta I_{DD}
 ```
 
 ### E-FRET Estimation
@@ -202,7 +202,7 @@ R = \frac{F_c}{I_{DD}}
 __ECFP and EYFP Setup:__
 
 - Microscope Olympus IX71
-- Camera Sensicam QE
+- Camera PCO Sensicam QE
 - Cube Chroma 69008
 - Dual-view system with Chroma 505DCXR beam splitter
 - Donor excitation wavelength 435 nm
@@ -211,8 +211,8 @@ __ECFP and EYFP Setup:__
 __TagBFP and mBaoJin Setup:__
 
 - Microscope Olympus IX71
-- Camera Sensicam QE
-- Cube Chroma 69009
+- Camera PCO Sensicam QE
+- Cube Chroma 69002
 - Dual-view system with Chroma 505DCXR beam splitter
 - Donor excitation wavelength 405 nm
 - Acceptor excitation wavelength 495 nm
