@@ -16,3 +16,4 @@ eggs/
 site/
 venv
 dev_env.yml
+*.csv

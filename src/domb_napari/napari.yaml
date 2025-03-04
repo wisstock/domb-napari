@@ -13,6 +13,9 @@ contributions:
     - id: domb-napari.cross_calc_widget
       title: E-FRET crosstalk estimation
       python_name: domb_napari._widget:cross_calc
+    - id: domb-napari.g_calc_widget
+      title: E-FRET G-factor estimation
+      python_name: domb_napari._widget:g_calc
     - id: domb-napari.e_app_widget
       title: E-FRET estimation
       python_name: domb_napari._widget:e_app_calc
@@ -46,6 +49,8 @@ contributions:
       display_name: Red-green series
     - command: domb-napari.cross_calc_widget
       display_name: E-FRET crosstalk estimation
+    - command: domb-napari.g_calc_widget
+      display_name: E-FRET G-factor estimation
     - command: domb-napari.e_app_widget
       display_name: E-FRET estimation
     - command: domb-napari.split_sep_widget

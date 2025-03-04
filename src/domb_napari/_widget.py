@@ -228,121 +228,236 @@ def cross_calc(DD_img:Image, DA_img:Image, AA_img:Image, AD_img:Image,
                presented_fluorophore:str='A',
                saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
-        if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3) and (AD_img.data.ndim == 3):
+        if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3, AD_img.data.ndim == 3]):
+            raise ValueError('Incorrect input image shape!')
 
-            def _save_cross_data(output_df):
-                df_name = f"{AA_img.name}_{presented_fluorophore}_coef.csv"
-                output_df.to_csv(os.path.join(saving_path, df_name))
+        def _save_cross_data(output_df):
+            df_name = f"{AA_img.name}_{presented_fluorophore}_coef.csv"
+            output_df.to_csv(os.path.join(saving_path, df_name))
 
-            @thread_worker(connect={'yielded':_save_cross_data})
-            def _cross_calc():
-                output_name = AA_img.name.replace('_ch3','')
+        @thread_worker(connect={'yielded':_save_cross_data})
+        def _cross_calc():
+            output_name = AA_img.name.replace('_ch3','')
 
-                input_labels = mask.data
-                input_mask = input_labels != 0
+            input_labels = mask.data
+            input_mask = input_labels != 0
+            
+            def c_calc(img_ref, img_prm, img_off, img_mask, c_prm_name, c_off_name, img_name):
+                col_list = ['id', 'frame_n',
+                            c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
+                            c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
+                c_df = pd.DataFrame(columns=col_list)
+
+                for i in range(len(img_ref)):
+                    arr_ref = ma.masked_array(img_ref[i], mask=~img_mask).compressed()
+                    arr_prm = ma.masked_array(img_prm[i], mask=~img_mask).compressed()
+                    arr_off = ma.masked_array(img_off[i], mask=~img_mask).compressed()
+
+                    c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
+                    c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
+
+                    row_dict =  {'id': img_name,
+                                    'frame_n': i,
+                                    c_prm_name+'_val': c_prm_fit.slope,
+                                    c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
+                                    c_prm_name+'_err': c_prm_fit.stderr,
+                                    c_prm_name+'_i': c_prm_fit.intercept,
+                                    c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
+                                    c_prm_name+'_r^2': c_prm_fit.rvalue,
+                                    c_off_name+'_val': c_off_fit.slope,
+                                    c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
+                                    c_off_name+'_err': c_off_fit.stderr,
+                                    c_off_name+'_i': c_off_fit.intercept,
+                                    c_off_name+'_i_err': c_off_fit.intercept_stderr,
+                                    c_off_name+'_r^2': c_off_fit.rvalue}      
+                    row_df = pd.DataFrame(row_dict, index=[0])
+                    c_df = pd.concat([c_df.astype(row_df.dtypes),
+                                        row_df.astype(c_df.dtypes)],
+                                        ignore_index=True)
+                return c_df
+
+            if presented_fluorophore == 'A':
+                coef_df = c_calc(img_ref = AA_img.data,
+                                    img_prm = DA_img.data,
+                                    img_off = DD_img.data,
+                                    img_mask = input_mask,
+                                    c_prm_name = 'a',
+                                    c_off_name = 'b',
+                                    img_name = output_name)
+            if presented_fluorophore == 'D':
+                coef_df = c_calc(img_ref = DD_img.data,
+                                    img_prm = DA_img.data,
+                                    img_off = AA_img.data,
+                                    img_mask = input_mask,
+                                    c_prm_name = 'd',
+                                    c_off_name = 'c',
+                                    img_name = output_name)
+            
+            show_info(f'{output_name}: {presented_fluorophore} coeficients saved')
+            yield coef_df
+
+        _cross_calc()
+
+
+@magic_factory(call_button='Estimate G-factor',
+               saving_path={'mode': 'd'})
+def g_calc(viewer: Viewer,
+           pre_DD_img:Image, pre_DA_img:Image, pre_AA_img:Image,
+           post_DD_img:Image, post_DA_img:Image, post_AA_img:Image,
+           mask: Labels,
+           a:float=0.1846, d:float=0.2646,  # a & d for TagBFP+mBaoJin
+           frame_for_estimation:int=0,
+           save_Fc_and_G_img:bool=True,
+           saving_path:pathlib.Path = os.getcwd()):
+    if input is not None:
+        if not np.all([post_DD_img.data.ndim == 3, post_DA_img.data.ndim == 3, post_AA_img.data.ndim == 3]):
+            raise ValueError('Incorrect input post-image shape!')
+        if not np.all([pre_DD_img.data.ndim == 3, pre_DA_img.data.ndim == 3, pre_AA_img.data.ndim == 3]):
+            raise ValueError('Incorrect input pre-image shape!')
+
+        def _save_g_data(output):
+            df_name = f"{pre_AA_img.name}_f{frame_for_estimation}_g_factor.csv"
+            output[0].to_csv(os.path.join(saving_path, df_name))
+            if save_Fc_and_G_img:
+                try: 
+                    viewer.layers[f"{pre_AA_img.name}_Fc_pre"].data = output[1]
+                except KeyError:
+                    viewer.add_image(output[1], name=f"{pre_AA_img.name}_Fc_pre", colormap='turbo')
+                try: 
+                    viewer.layers[f"{pre_AA_img.name}_Fc_post"].data = output[2]
+                except KeyError:
+                    viewer.add_image(output[2], name=f"{pre_AA_img.name}_Fc_post", colormap='turbo')
+                try: 
+                    viewer.layers[f"{pre_AA_img.name}_G"].data = output[3]
+                except KeyError:
+                    viewer.add_image(output[3], name=f"{pre_AA_img.name}_G", colormap='turbo')
+
+        @thread_worker(connect={'yielded':_save_g_data})
+        def _g_calc():
+            def __Fc_img(dd_img, da_img, aa_img, a, d):
+                Fc_img = []
+                for frame_num in range(dd_img.shape[0]):
+                    DD_frame = dd_img[frame_num]
+                    DA_frame = da_img[frame_num]
+                    AA_frame = aa_img[frame_num]
+
+                    Fc_frame = DA_frame - a*AA_frame - d*DD_frame
+                    Fc_frame[Fc_frame < 0] = 0
+                    Fc_img.append(Fc_frame)
+
+                return np.asarray(Fc_img, dtype=dd_img.dtype)
+            
+            def __G_img(Fc_pre_img, Fc_post_img, dd_pre_img, dd_post_img, mask):
+                G_img = []
+                for frame_num in range(Fc_pre_img.shape[0]):
+                    # Fc_pre_frame = ma.masked_where(~mask, Fc_pre_img[frame_num])
+                    # Fc_post_frame = ma.masked_where(~mask, Fc_post_img[frame_num])
+                    # DD_pre_frame = ma.masked_where(~mask, dd_pre_img[frame_num])
+                    # DD_post_frame = ma.masked_where(~mask, dd_post_img[frame_num])
+
+                    Fc_pre_frame = Fc_pre_img[frame_num]
+                    Fc_post_frame = Fc_post_img[frame_num]
+                    DD_pre_frame = dd_pre_img[frame_num]
+                    DD_post_frame = dd_post_img[frame_num]
+
+                    G_frame = (Fc_pre_frame - Fc_post_frame) / (DD_post_frame - DD_pre_frame)
+                    G_frame[~mask] = 0
+                    G_img.append(G_frame)
                 
-                def c_calc(img_ref, img_prm, img_off, img_mask, c_prm_name, c_off_name, img_name):
-                    col_list = ['id', 'frame_n',
-                                c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
-                                c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
-                    c_df = pd.DataFrame(columns=col_list)
+                return np.asarray(G_img)
 
-                    for i in range(len(img_ref)):
-                        arr_ref = ma.masked_array(img_ref[i], mask=~img_mask).compressed()
-                        arr_prm = ma.masked_array(img_prm[i], mask=~img_mask).compressed()
-                        arr_off = ma.masked_array(img_off[i], mask=~img_mask).compressed()
+            output_name = pre_AA_img.name.replace('_ch3','')
+            col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
+            g_df = pd.DataFrame(columns=col_list)
 
-                        c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
-                        c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
+            Fc_img_pre = __Fc_img(dd_img=pre_DD_img.data,
+                                  da_img=pre_DA_img.data,
+                                  aa_img=pre_AA_img.data,
+                                  a=a, d=d)
+            Fc_img_post = __Fc_img(dd_img=post_DD_img.data,
+                                   da_img=post_DA_img.data,
+                                   aa_img=post_AA_img.data,
+                                   a=a, d=d)
+            img_mask = mask.data != 0
 
-                        row_dict =  {'id': img_name,
-                                     'frame_n': i,
-                                     c_prm_name+'_val': c_prm_fit.slope,
-                                     c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
-                                     c_prm_name+'_err': c_prm_fit.stderr,
-                                     c_prm_name+'_i': c_prm_fit.intercept,
-                                     c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
-                                     c_prm_name+'_r^2': c_prm_fit.rvalue,
-                                     c_off_name+'_val': c_off_fit.slope,
-                                     c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
-                                     c_off_name+'_err': c_off_fit.stderr,
-                                     c_off_name+'_i': c_off_fit.intercept,
-                                     c_off_name+'_i_err': c_off_fit.intercept_stderr,
-                                     c_off_name+'_r^2': c_off_fit.rvalue}      
-                        row_df = pd.DataFrame(row_dict, index=[0])
-                        c_df = pd.concat([c_df.astype(row_df.dtypes),
-                                          row_df.astype(c_df.dtypes)],
-                                          ignore_index=True)
-                    return c_df
+            DD_img_delta = np.array([f - pre_DD_img.data[frame_for_estimation] for f in post_DD_img.data]).clip(min=0).astype(dtype=pre_DD_img.data.dtype)
+            Fc_img_delta = np.array([Fc_img_pre[frame_for_estimation] - f for f in Fc_img_post]).clip(min=0).astype(dtype=pre_DD_img.data.dtype)
 
-                if presented_fluorophore == 'A':
-                    coef_df = c_calc(img_ref = AA_img.data,
-                                     img_prm = DA_img.data,
-                                     img_off = DD_img.data,
-                                     img_mask = input_mask,
-                                     c_prm_name = 'a',
-                                     c_off_name = 'b',
-                                     img_name = output_name)
-                if presented_fluorophore == 'D':
-                    coef_df = c_calc(img_ref = DD_img.data,
-                                     img_prm = DA_img.data,
-                                     img_off = AA_img.data,
-                                     img_mask = input_mask,
-                                     c_prm_name = 'd',
-                                     c_off_name = 'c',
-                                     img_name = output_name)
+            for i in range(len(DD_img_delta)):
+                arr_dd_dlta = ma.masked_array(DD_img_delta[i], mask=~img_mask).compressed()
+                arr_fc_delta = ma.masked_array(Fc_img_delta[i], mask=~img_mask).compressed()
+
+                g_fit = stats.linregress(arr_dd_dlta, arr_fc_delta, alternative='greater')
+
+                row_dict =  {'id': output_name,
+                             'frame_n': i,
+                             'g_val': g_fit.slope,
+                             'g_p': "{:.5f}".format(g_fit.pvalue),
+                             'g_err': g_fit.stderr,
+                             'g_i': g_fit.intercept,
+                             'g_i_err': g_fit.intercept_stderr,
+                             'g_r^2': g_fit.rvalue}      
+                row_df = pd.DataFrame(row_dict, index=[0])
+                g_df = pd.concat([g_df.astype(row_df.dtypes),
+                                    row_df.astype(g_df.dtypes)],
+                                    ignore_index=True)
+
+            show_info(f'{output_name}: G-factor saved')
+            if save_Fc_and_G_img:
+                g_img = __G_img(Fc_pre_img=Fc_img_pre,
+                                Fc_post_img=Fc_img_post,
+                                dd_pre_img=pre_DD_img.data,
+                                dd_post_img=post_DD_img.data,
+                                mask=img_mask)
                 
-                show_info(f'{output_name}: {presented_fluorophore} coeficients saved')
-                yield coef_df
+                yield (g_df, Fc_img_pre, Fc_img_post, g_img)
+            else:
+                yield (g_df)
 
-            _cross_calc()
+        _g_calc()
 
-    else:
-        raise ValueError('Incorrect input image shape!')
-    
 
 @magic_factory(call_button='Estimate E-FRET',
-               output_type={"choices": ['Eapp', 'Ecorr', 'Fc']},)
+               output_type={"choices": ['Eapp', 'Fc', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.122, d:float=0.794, G:float=3.6,
+               a:float=0.1846, d:float=0.2646, G:float=0.0,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=
                output_type:str='Eapp',
                save_normalized:bool=True):
     if input is not None:
-        if (DD_img.data.ndim == 3) and (DA_img.data.ndim == 3) and (AA_img.data.ndim == 3):
-
-            def _save_e_app(params):
-                img = params[0]
-                img_name = params[1]
-                try: 
-                    viewer.layers[img_name].data = img
-                except KeyError:
-                    viewer.add_image(img, name=img_name, colormap='turbo')
-
-            @thread_worker(connect={'yielded':_save_e_app})
-            def _e_app_calc():
-                e_fret_img = e_app.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
-                                        abcd_list=[a,0,0,d], G_val=G,
-                                        mask=masking.proc_mask(np.mean(AA_img.data, axis=0)))
-                output_name = AA_img.name.replace('_ch3','')
-                if output_type == 'Ecorr':
-                    output_fret_img = e_fret_img.Ecorr_img
-                    output_suffix = '_Ecorr'
-                elif output_type == 'Eapp':
-                    output_fret_img = e_fret_img.Eapp_img
-                    output_suffix = '_Eapp'
-                elif output_type == 'Fc':
-                    output_fret_img = e_fret_img.Fc_img
-                    output_suffix = '_Fc'
-                yield (output_fret_img, output_name + output_suffix)
-                if save_normalized:
-                    img_norm = np.mean(AA_img.data, axis=0)
-                    img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm))
-                    output_norm = output_fret_img*img_norm
-                    yield (output_norm, output_name + output_suffix + '_norm')
-
-            _e_app_calc()
-        else:
+        if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
             raise ValueError('Incorrect input image shape!')
+
+        def _save_e_app(params):
+            img = params[0]
+            img_name = params[1]
+            try: 
+                viewer.layers[img_name].data = img
+            except KeyError:
+                viewer.add_image(img, name=img_name, colormap='turbo')
+
+        @thread_worker(connect={'yielded':_save_e_app})
+        def _e_app_calc():
+            e_fret_img = e_app.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
+                                    abcd_list=[a,0,0,d], G_val=G,
+                                    mask=masking.proc_mask(np.mean(AA_img.data, axis=0)))
+            output_name = AA_img.name.replace('_ch3','')
+            if output_type == 'Ecorr':
+                output_fret_img = e_fret_img.Ecorr_img
+                output_suffix = '_Ecorr'
+            elif output_type == 'Eapp':
+                output_fret_img = e_fret_img.Eapp_img
+                output_suffix = '_Eapp'
+            elif output_type == 'Fc':
+                output_fret_img = e_fret_img.Fc_img
+                output_suffix = '_Fc'
+            yield (output_fret_img, output_name + output_suffix)
+            if save_normalized:
+                img_norm = np.mean(AA_img.data, axis=0)
+                img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm))
+                output_norm = output_fret_img*img_norm
+                yield (output_norm, output_name + output_suffix + '_norm')
+
+        _e_app_calc()
 
 
 @magic_factory(call_button='Calc Red-Green')
