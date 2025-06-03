@@ -19,10 +19,7 @@ This plugin offers widgets specifically designed to analyze the redistribution o
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
-
 ---
-
-
 
 ## Preprocessing
 ### Dual-view Stack Registration
@@ -126,13 +123,15 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 
 ---
 
-## FRET Detection
-Widgets for detection and analysis of Förster resonance energy transfer multispectral image stacks.
+## 3-cube E-FRET Approach
+Widgets for detection and analysis of Förster resonance energy transfer on multispectral image stacks.
 
 Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
 
 
 ### E-FRET Crosstalk Estimation
+_In progress._ 
+
 Estimation of the crosstalk/bleedthrough of fluorescence between the donor and acceptor’s spectral channels.
 
 ```math
@@ -186,7 +185,6 @@ G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d 
 ```
 
 ### E-FRET Estimation
-
 Estimation of the E-FRET with 3-cube approach.
 
 ```math
@@ -196,7 +194,6 @@ E_{app} = \frac{R}{R+G}
 ```math
 R = \frac{F_c}{I_{DD}}
 ```
-
 
 
 __ECFP and EYFP Setup:__
@@ -260,8 +257,8 @@ The `calc projections` option allows obtaining individual pH series projections 
 This widget builds a plot with mean intensity profiles for each Region of Interest (ROI) in labels. It uses either absolute intensity (if `absolute intensity` is selected) or relative intensities (ΔF/F0).
 
 - `time scale` - sets the number of seconds between frames for x-axis scaling.
-- `ΔF win` - the baseline intensity for ΔF/F0 profiles is estimated as the mean intensity of the specified number of initial profile points.
-- `ΔF amplitude lim` - allows filtering of ROIs by minimum and maximum ΔF/F0 amplitudes. Note: Amplitude filtering works with ΔF/F0 profiles only.
+- `values mod` - the mode of output profile calculation. Options are `ΔF/F0` (relative intensity changes), `ΔF` (absolute intensity changes), or `abs` (absolute intensity value)
+- `ΔF win` - if selected `use_simple_baseline`, the baseline intensity for ΔF/F0 profiles is estimated as the mean intensity of the specified number of initial profile points. Othervise, this paramater specify half-size of the moving median baseline estimator (`noisy_median` from `pybaselines` package).
 - `profiles crop` - if selected, only a specified range of intensity profile indexes will be plotted, corresponding to the start and stop indexes from `profiles range`.
 
 Additionally, you can save ROI intensity profiles as .csv files using the `save data frame` option and specifying the `saving path`. The output data frames named %img_name%_lab_prof.csv will include the following columns:
@@ -281,14 +278,14 @@ __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/ima
 
 
 ### Multiple Images Stat Profiles
-This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) specified in `lab`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
+This widget builds a plot displaying the average intensity of all Regions of Interest (ROIs) specified in `lab`. It can handle up to three images (`img 0`, `img 1`, and `img 2`) as inputs, depending on the selected `profiles num`.
 
-`time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
+`time scale`, `values mod`, and `ΔF win` parameters are identical as described in the __ROIs profiles__ widget.
 
-The `stat method` allows for the estimation of intensity and associated errors through the following methods:
-- `se` - mean +/- standard error of the mean.
-- `iqr` - median +/- interquartile range.
-- `ci` - mean +/- 95% confidence interval based on the t-distribution.
+The `stat method` allows estimation of intensity and associated errors using the following methods:
+- `se` - mean ± standard error of the mean.
+- `iqr` - median ± interquartile range.
+- `ci` - mean ± 95% confidence interval (t-distribution).
 
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_abs.png)
 :-------------------------:|:-------------------------:
@@ -298,9 +295,9 @@ __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/ima
 ### Multiple Labels Stat Profiles
 This widget builds a plot displaying the averaged intensity of all Regions of Interest (ROI) for one target `img`. It can handle up to three labels (`lab 0`, `lab 1`, and `lab 2`), depending on the selected `profiles num`.
 
-`time scale`, `ΔF win`, and `absolute intensity` parameters are identical as described in the __ROIs profiles__ widget.
+`time scale`, `values mod`, and `ΔF win` parameters are identical as described in the __ROIs profiles__ widget.
 
-The `stat method` allows for the estimation of intensity and associated errors through the following methods:
+The `stat method` allows estimation of intensity and associated errors using the following methods:
 - `se` - mean +/- standard error of the mean.
 - `iqr` - median +/- interquartile range.
 - `ci` - mean +/- 95% confidence interval based on the t-distribution.
@@ -308,3 +305,35 @@ The `stat method` allows for the estimation of intensity and associated errors t
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_abs.png)
 :-------------------------:|:-------------------------:
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_df.png)
+
+
+## How to Cite
+If you use this plugin in your work, please cite the following paper:
+
+```
+@article{Olifirov2025,
+  title = {Local Iontophoretic Application for Pharmacological Induction of Long-Term Synaptic Depression},
+  volume = {15},
+  ISSN = {2331-8325},
+  url = {http://dx.doi.org/10.21769/BioProtoc.5338},
+  DOI = {10.21769/bioprotoc.5338},
+  number = {1373},
+  journal = {BIO-PROTOCOL},
+  publisher = {Bio-Protocol,  LLC},
+  author = {Olifirov,  Borys and Fedchenko,  Oleksandra and Dovgan,  Alexandr and Babets,  Daria and Krotov,  Volodymyr and Cherkas,  Volodymyr and Belan,  Pavel},
+  year = {2025}
+}
+```
+
+or zenodo:
+```
+@misc{https://doi.org/10.5281/zenodo.14843770,
+  doi = {10.5281/ZENODO.14843770},
+  url = {https://zenodo.org/doi/10.5281/zenodo.14843770},
+  author = {wisstock,  },
+  title = {wisstock/domb-napari: Zenodo release v0.3.0},
+  publisher = {Zenodo},
+  year = {2025},
+  copyright = {MIT License}
+}
+```

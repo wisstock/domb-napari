@@ -7,6 +7,7 @@ from napari.qt.threading import thread_worker
 
 import pathlib
 import os
+import time
 
 import pandas as pd
 import numpy as np
@@ -31,6 +32,8 @@ from dipy.align.imaffine import AffineRegistration
 
 from domb.utils import masking
 from domb.fret.e_fret import e_app
+
+import domb_napari._utils as utils
 
 
 @magic_factory(call_button='Preprocess stack',
@@ -96,7 +99,10 @@ def split_channels(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Align stack')
 def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
-                    use_reference_img:bool=False, input_crop:int=25, output_crop:int=20):
+                    use_reference_img:bool=False,
+                    ch_ref:int=3,
+                    ch_offset:int=0,
+                    input_crop:int=25, output_crop:int=20):
     if input is not None:
         if offset_img.data.ndim == 4:
 
@@ -121,19 +127,14 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 if use_reference_img:
                     master_img_ref, master_img_offset = master_img[1], master_img[0]
                 else:
-                    master_img_ref = np.mean(offset_series[:,3,:,:], axis=0)
-                    master_img_offset = np.mean(offset_series[:,0,:,:], axis=0)
+                    master_img_ref = np.mean(offset_series[:,ch_ref,:,:], axis=0)
+                    master_img_offset = np.mean(offset_series[:,ch_offset,:,:], axis=0)
 
                 affreg = AffineRegistration()
                 transform = AffineTransform2D()
                 affine = affreg.optimize(master_img_ref, master_img_offset,
                                         transform, params0=None)
-                master_img_xform = affine.transform(master_img_offset)
-
-                # masking.misalign_estimate(master_img_ref, master_img_offset,
-                #                           title='Master raw', show_img=False, rough_estimate=False)
-                # masking.misalign_estimate(master_img_ref, master_img_xform,
-                #                           title='Master xform', show_img=False, rough_estimate=False)
+                # master_img_xform = affine.transform(master_img_offset)
 
                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
@@ -350,11 +351,6 @@ def g_calc(viewer: Viewer,
             def __G_img(Fc_pre_img, Fc_post_img, dd_pre_img, dd_post_img, mask):
                 G_img = []
                 for frame_num in range(Fc_pre_img.shape[0]):
-                    # Fc_pre_frame = ma.masked_where(~mask, Fc_pre_img[frame_num])
-                    # Fc_post_frame = ma.masked_where(~mask, Fc_post_img[frame_num])
-                    # DD_pre_frame = ma.masked_where(~mask, dd_pre_img[frame_num])
-                    # DD_post_frame = ma.masked_where(~mask, dd_post_img[frame_num])
-
                     Fc_pre_frame = Fc_pre_img[frame_num]
                     Fc_post_frame = Fc_post_img[frame_num]
                     DD_pre_frame = dd_pre_img[frame_num]
@@ -474,12 +470,12 @@ def der_series(viewer: Viewer, img:Image,
 
             """
             return vispy.color.Colormap([[0.0, 1.0, 0.0],
-                                        [0.0, 0.9, 0.0],
-                                        [0.0, 0.85, 0.0],
-                                        [0.0, 0.0, 0.0],
-                                        [0.85, 0.0, 0.0],
-                                        [0.9, 0.0, 0.0],
-                                        [1.0, 0.0, 0.0]])
+                                         [0.0, 0.9, 0.0],
+                                         [0.0, 0.85, 0.0],
+                                         [0.0, 0.0, 0.0],
+                                         [0.85, 0.0, 0.0],
+                                         [0.9, 0.0, 0.0],
+                                         [1.0, 0.0, 0.0]])
 
         def _save_rg_img(params):
             img = params[0]
@@ -707,16 +703,17 @@ def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
             
 
 @magic_factory(call_button='Build Profiles',
+               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
                saving_path={'mode': 'd'})
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=5.0,
-                        absolute_intensity:bool=False,
+                        values_mode='ΔF/F0',
                         ΔF_win:int=5,
-                        ΔF_aplitude_lim:list=[10.0, 10.0],
+                        use_simple_baseline:bool=False,
                         profiles_crop:bool=False,
                         profiles_range:list=[0,10],
                         save_data_frame:bool=False,
-                        save_ROIs_distances_in_data_frame:bool=False,
+                        save_ROIs_distances:bool=False,
                         saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         input_img = img.data
@@ -726,56 +723,60 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
-        if save_ROIs_distances_in_data_frame:
+        if save_ROIs_distances:
             col_list = ['id','roi','int', 'dist', 'index', 'time']
             tip_position_img = np.ones_like(input_img[0], dtype=bool)
             tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
             tip_position_img[tip_x,tip_y] = False
             tip_distance_img = ndi.distance_transform_edt(tip_position_img)
             distance_list = []
+            for label_num in np.unique(input_labels)[1:]:
+                region_mask = input_labels == label_num
+                distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
             show_info(f'{img.name}: center position {tip_x, tip_y}')
         else:
             col_list = ['id','roi','int', 'index', 'time']
 
-        profile_raw = []
-        profile_dF = []
-        for label_num in np.unique(input_labels)[1:]:
-            region_mask = input_labels == label_num
-            one_prof = np.mean(input_img, axis=(1,2), where=region_mask)
-            F_0 = np.mean(one_prof[:ΔF_win])
-            one_prof_df = (one_prof-F_0)/F_0
+        if use_simple_baseline:
+            fun_delta = utils.delta_prof_simple
+        else:
+            fun_delta = utils.delta_prof_pybase
 
-            profile_raw.append(one_prof)
-            profile_dF.append(one_prof_df)
-
-            if save_ROIs_distances_in_data_frame:
-                distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
-
-        profile_raw = np.asarray(profile_raw)
-        profile_dF = np.asarray(profile_dF)
+        start = time.perf_counter()
+        profile_abs = utils.labels_to_profiles(input_label=input_labels,
+                                               input_img=input_img)
 
         profile_to_plot = []
-        if absolute_intensity:
-            profile_to_plot = np.round(profile_raw, decimals=4)
-            ylab = 'Intensity, a.u.'
+        if values_mode == 'abs.':
+            profile_to_plot = np.round(profile_abs, decimals=4)
+            ylab = 'a.u.'
             df_name = df_name + '_abs'
-        else:
-            profile_to_plot = np.round(profile_dF, decimals=4)
-            ylab = 'ΔF/F0'
+        elif values_mode == 'ΔF':
+            profile_to_plot = fun_delta(profile_abs,
+                                                      win_size=ΔF_win,
+                                                      mode='dF')
+            ylab = 'ΔF'
             df_name = df_name + '_ΔF'
+        elif values_mode == 'ΔF/F0':
+            profile_to_plot = fun_delta(profile_abs,
+                                                      win_size=ΔF_win,
+                                                      mode='dF/F0')
+            ylab = 'ΔF/F0'
+            df_name = df_name + '_ΔF/F0'
+        end = time.perf_counter()
+        show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
 
         if save_data_frame:
             output_df = pd.DataFrame(columns=col_list)
 
             for num_ROI in range(profile_to_plot.shape[0]):
                 profile_ROI = profile_to_plot[num_ROI]
-
                 dict_ROI = {'id':img.name,
                             'roi':num_ROI+1,
                             'int':profile_ROI,
                             'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
                             'time':time_line}
-                if save_ROIs_distances_in_data_frame:
+                if save_ROIs_distances:
                     dict_ROI['dist'] = distance_list[num_ROI]
 
                 df_ROI = pd.DataFrame(dict_ROI)
@@ -797,32 +798,26 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         ax.spines['right'].set_visible(False)
         for num_ROI, color in enumerate(lab_colors):
             profile_ROI = profile_to_plot[num_ROI]
-            if absolute_intensity:
-                ax.plot(time_line, profile_ROI,
-                         alpha=0.45, marker='o', color=color)
-                plt_title = f'{img.name} absolute intensity profiles, labels {labels.name}'
-            elif (profile_ROI.min() > -ΔF_aplitude_lim[0]) | (profile_ROI.max() < ΔF_aplitude_lim[1]):
-                ax.plot(time_line, profile_ROI,
-                         alpha=0.45, marker='o', color=color)
-                plt_title = f'{img.name} ΔF/F0 profiles (lim -{ΔF_aplitude_lim[0]}, {ΔF_aplitude_lim[1]}), labels {labels.name}'
-            else:
-                continue
+            ax.plot(time_line, profile_ROI,
+                        alpha=0.45, marker='o', color=color)
         ax.grid(color='grey', linewidth=.25)
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
-        plt.title(plt_title)
+        plt.title(f'{img.name} ROIs profiles, {values_mode} mode, labels: {labels.name}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='ROIs Prof.')
 
 
 @magic_factory(call_button='Build Profiles',
-               stat_method={"choices": ['se', 'iqr', 'ci']},
-               profiles_num={"choices": ['1', '2', '3']},)
+               profiles_num={"choices": ['1', '2', '3']},
+               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
+               stat_method={"choices": ['se', 'iqr', 'ci']},)
 def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
                               lab:Labels,
                               profiles_num:str='1',
-                              absolute_intensity:bool=False, 
                               time_scale:float=5.0,
+                              values_mode:str='ΔF/F0',
                               ΔF_win:int=5,
+                              use_simple_baseline:bool=False, 
                               stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -839,47 +834,84 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
 
-        # processing
-        input_img_0 = img_0.data
-        input_labels = lab.data
-        
-        profile_dF_0, profile_raw_0 = masking.label_prof_arr(input_label=input_labels,
-                                                             input_img_series=input_img_0,
-                                                             f0_win=ΔF_win)
-        if absolute_intensity:
-            selected_profile_0  = profile_raw_0
-            ylab = 'I'
+        if use_simple_baseline:
+            fun_delta = utils.delta_prof_simple
         else:
-            selected_profile_0  = profile_dF_0
+            fun_delta = utils.delta_prof_pybase
+
+        # processing
+        input_labels = lab.data
+
+        start = time.perf_counter()
+        # img 0
+        input_img_0 = img_0.data
+        time_line_0 = np.linspace(0, (input_img_0.shape[0]-1)*time_scale, \
+                                  num=input_img_0.shape[0])
+        profile_abs_0 = utils.labels_to_profiles(input_label=input_labels,
+                                           input_img=input_img_0)
+        if values_mode == 'abs.':
+            selected_profile_0 = np.round(profile_abs_0, decimals=4)
+            ylab = 'a.u.'
+        elif values_mode == 'ΔF':
+            selected_profile_0 = fun_delta(profile_abs_0,
+                                            win_size=ΔF_win,
+                                            mode='dF')
+            ylab = 'ΔF'
+        elif values_mode == 'ΔF/F0':
+            selected_profile_0 = fun_delta(profile_abs_0,
+                                            win_size=ΔF_win,
+                                            mode='dF/F0')
             ylab = 'ΔF/F0'
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
+        # img 1
         if profiles_num == '2' or profiles_num == '3':
             input_img_1 = img_1.data
-            profile_dF_1, profile_raw_1 = masking.label_prof_arr(input_label=input_labels,
-                                                                 input_img_series=input_img_1,
-                                                                 f0_win=ΔF_win)
-            if absolute_intensity:
-                selected_profile_1  = profile_raw_1
-            else:
-                selected_profile_1  = profile_dF_1
+            time_line_1 = np.linspace(0, (input_img_1.shape[0]-1)*time_scale, \
+                                    num=input_img_1.shape[0])
+            profile_abs_1 = utils.labels_to_profiles(input_label=input_labels,
+                                            input_img=input_img_1)
+            if values_mode == 'abs.':
+                selected_profile_1 = np.round(profile_abs_1, decimals=4)
+                ylab = 'Intensity, a.u.'
+            elif values_mode == 'ΔF':
+                selected_profile_1 = fun_delta(profile_abs_1,
+                                                        win_size=ΔF_win,
+                                                        mode='dF')
+                ylab = 'ΔF'
+            elif values_mode == 'ΔF/F0':
+                selected_profile_1 = fun_delta(profile_abs_1,
+                                                win_size=ΔF_win,
+                                                mode='dF/F0')
+                ylab = 'ΔF/F0'
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
+        # img 2
         if profiles_num == '3':
             input_img_2 = img_2.data
-            profile_dF_2, profile_raw_2 = masking.label_prof_arr(input_label=input_labels,
-                                                                 input_img_series=input_img_2,
-                                                                 f0_win=ΔF_win)
-            if absolute_intensity:
-                selected_profile_2  = profile_raw_2
-            else:
-                selected_profile_2  = profile_dF_2
+            time_line_2 = np.linspace(0, (input_img_2.shape[0]-1)*time_scale, \
+                                    num=input_img_2.shape[0])
+            profile_abs_2 = utils.labels_to_profiles(input_label=input_labels,
+                                            input_img=input_img_2)
+            if values_mode == 'abs.':
+                selected_profile_2 = np.round(profile_abs_2, decimals=4)
+                ylab = 'a.u.'
+            elif values_mode == 'ΔF':
+                selected_profile_2 = fun_delta(profile_abs_2,
+                                                win_size=ΔF_win,
+                                                mode='dF')
+                ylab = 'ΔF'
+            elif values_mode == 'ΔF/F0':
+                selected_profile_2 = fun_delta(profile_abs_2,
+                                                win_size=ΔF_win,
+                                                mode='dF/F0')
+                ylab = 'ΔF/F0'
             arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
+        end = time.perf_counter()
+        show_info(f'Profiles calculated in {end-start:.2f} s')
+
 
         # plotting
-        time_line = np.linspace(0, (input_img_0.shape[0]-1)*time_scale, \
-                                num=input_img_0.shape[0])
-        
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
@@ -889,37 +921,38 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
 
-        ax.errorbar(time_line, arr_val_0,
+        ax.errorbar(time_line_0, arr_val_0,
                     yerr = arr_var_0,
                     fmt ='-o', capsize=2, label=img_0.name,
                     alpha=0.75, color='black')
         
         if profiles_num == '2' or profiles_num == '3':
-            ax.errorbar(time_line, arr_val_1,
+            ax.errorbar(time_line_1, arr_val_1,
                         yerr = arr_var_1,
                         fmt ='-o', capsize=2, label=img_1.name,
                         alpha=0.75, color='red')
 
         if profiles_num == '3':
-            ax.errorbar(time_line, arr_val_2,
+            ax.errorbar(time_line_2, arr_val_2,
                         yerr = arr_var_2,
                         fmt ='-o', capsize=2, label=img_2.name,
                         alpha=0.75, color='blue')
-        
         plt.legend()
         plt.title(f'{lab.name}, method {stat_method}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Img Stat Prof.')
 
 
 @magic_factory(call_button='Build Profiles',
-               stat_method={"choices": ['se', 'iqr', 'ci']},
-               labels_num={"choices": ['1', '2', '3']},)
+               labels_num={"choices": ['1', '2', '3']},
+               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
+               stat_method={"choices": ['se', 'iqr', 'ci']},)
 def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         lab_0:Labels, lab_1:Labels, lab_2:Labels,
-                        labels_num:str='1',
-                        absolute_intensity:bool=False, 
                         time_scale:float=5.0,
+                        labels_num:str='1',
+                        values_mode:str='ΔF/F0',
                         ΔF_win:int=5,
+                        use_simple_baseline:bool=False, 
                         stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -935,48 +968,81 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         stat_dict = {'se':arr_se_stat,
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
+        
+        if use_simple_baseline:
+            fun_delta = utils.delta_prof_simple
+        else:
+            fun_delta = utils.delta_prof_pybase
 
         # processing
         input_img = img.data
+
+        time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
+                                num=input_img.shape[0])
+
+        start = time.perf_counter()
+        # lab 0
         input_lab_0 = lab_0.data
-        
-        profile_dF_0, profile_raw_0 = masking.label_prof_arr(input_label=input_lab_0,
-                                                             input_img_series=input_img,
-                                                             f0_win=ΔF_win)
-        if absolute_intensity:
-            selected_profile_0  = profile_raw_0
-            ylab = 'I'
-        else:
-            selected_profile_0  = profile_dF_0
+        profile_abs_0 = utils.labels_to_profiles(input_label=input_lab_0,
+                                           input_img=input_img)
+        if values_mode == 'abs.':
+            selected_profile_0 = np.round(profile_abs_0, decimals=4)
+            ylab = 'a.u.'
+        elif values_mode == 'ΔF':
+            selected_profile_0 = fun_delta(profile_abs_0,
+                                            win_size=ΔF_win,
+                                            mode='dF')
+            ylab = 'ΔF'
+        elif values_mode == 'ΔF/F0':
+            selected_profile_0 = fun_delta(profile_abs_0,
+                                            win_size=ΔF_win,
+                                            mode='dF/F0')
             ylab = 'ΔF/F0'
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
+        # lab 1
         if labels_num == '2' or labels_num == '3':
             input_lab_1 = lab_1.data
-            profile_dF_1, profile_raw_1 = masking.label_prof_arr(input_label=input_lab_1,
-                                                                 input_img_series=input_img,
-                                                                 f0_win=ΔF_win)
-            if absolute_intensity:
-                selected_profile_1  = profile_raw_1
-            else:
-                selected_profile_1  = profile_dF_1
+            profile_abs_1 = utils.labels_to_profiles(input_label=input_lab_1,
+                                            input_img=input_img)
+            if values_mode == 'abs.':
+                selected_profile_1 = np.round(profile_abs_1, decimals=4)
+                ylab = 'a.u.'
+            elif values_mode == 'ΔF':
+                selected_profile_1 = fun_delta(profile_abs_1,
+                                                win_size=ΔF_win,
+                                                mode='dF')
+                ylab = 'ΔF'
+            elif values_mode == 'ΔF/F0':
+                selected_profile_1 = fun_delta(profile_abs_1,
+                                                win_size=ΔF_win,
+                                                mode='dF/F0')
+                ylab = 'ΔF/F0'
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
+        # lab 2
         if labels_num == '3':
             input_lab_2 = lab_2.data
-            profile_dF_2, profile_raw_2 = masking.label_prof_arr(input_label=input_lab_2,
-                                                                 input_img_series=input_img,
-                                                                 f0_win=ΔF_win)
-            if absolute_intensity:
-                selected_profile_2  = profile_raw_2
-            else:
-                selected_profile_2  = profile_dF_2
+            profile_abs_2 = utils.labels_to_profiles(input_label=input_lab_2,
+                                            input_img=input_img)
+            if values_mode == 'abs.':
+                selected_profile_2 = np.round(profile_abs_2, decimals=4)
+                ylab = 'a.u.'
+            elif values_mode == 'ΔF':
+                selected_profile_2 = fun_delta(profile_abs_2,
+                                                win_size=ΔF_win,
+                                                mode='dF')
+                ylab = 'ΔF'
+            elif values_mode == 'ΔF/F0':
+                selected_profile_2 = fun_delta(profile_abs_2,
+                                                win_size=ΔF_win,
+                                                mode='dF/F0')
+                ylab = 'ΔF/F0'
             arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
+        end = time.perf_counter()
+        show_info(f'Profiles calculated in {end-start:.2f} s')
 
-        # plotting
-        time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
-                                num=input_img.shape[0])
-        
+        # plotting        
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
         ax.spines['top'].set_visible(False)
