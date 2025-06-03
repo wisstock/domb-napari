@@ -252,7 +252,7 @@ The `calc projections` option allows obtaining individual pH series projections 
 ---
 
 
-## Intensty Profiles and Data Frame Saving
+## Plotting and Data Frame Saving
 ### ROIs Profiles
 This widget builds a plot with mean intensity profiles for each Region of Interest (ROI) in labels. It uses either absolute intensity (if `absolute intensity` is selected) or relative intensities (ΔF/F0).
 
@@ -305,6 +305,22 @@ The `stat method` allows estimation of intensity and associated errors using the
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_abs.png)
 :-------------------------:|:-------------------------:
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_df.png)
+
+### Save Data Frame
+This widget allows saving the data frame with the following columns:
+
+- `id` - unique image ID, the name of the input `napari.Image` object.
+- `lab_id` - unique label ID, the name of the input `napari.Labels` object.
+- `roi` - ROI number, consecutively numbered starting from 1.
+- `dist` - average distance in px to the ROI from the frame, (if `save ROIs distances in data frame` option is selected).
+- `index` - frame index.
+- `time` - frame time point, adjusted according to the `time scale`.
+- `abs_int` - absolute intensity value.
+- `dF_int` - absolute intensity changes (ΔF).
+- `dF/F0_int` - relative intensity changes (ΔF/F0).
+
+
+---
 
 
 ## How to Cite

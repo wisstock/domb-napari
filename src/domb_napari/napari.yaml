@@ -40,6 +40,9 @@ contributions:
     - id: domb-napari.dot_mask_widget
       title: Dot-patterns masking
       python_name: domb_napari._widget:dot_mask_calc
+    - id: domb-napari.save_df_widget
+      title: Save DataFrame
+      python_name: domb_napari._widget:save_df
   widgets:
     - command: domb-napari.dw_registration_widget
       display_name: Dual-view stack registration
@@ -67,4 +70,5 @@ contributions:
       display_name: Multiple img stat profiles
     - command: domb-napari.multi_labels_profile_widget
       display_name: Multiple labels stat profiles
-
+    - command: domb-napari.save_df_widget
+      display_name: Save DataFrame

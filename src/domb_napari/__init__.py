@@ -5,6 +5,7 @@ from ._widget import cross_calc, g_calc, e_app_calc
 from ._widget import der_series, mask_calc, up_mask_calc
 from ._widget import labels_multi_profile_stat, multi_labels_profile_stat, labels_profile_line
 from ._widget import dot_mask_calc
+from ._widget import save_df
 
 __all__ = ['split_channels',
            'dw_registration',
@@ -18,4 +19,5 @@ __all__ = ['split_channels',
            'labels_multi_profile_stat',
            'multi_labels_profile_stat',
            'labels_profile_line',
-           'dot_mask_calc']
+           'dot_mask_calc',
+           'save_df']

@@ -1,8 +1,8 @@
 from magicgui import magic_factory
 
 from napari import Viewer
-from napari.layers import Image, Labels
-from napari.utils.notifications import show_info
+from napari.layers import Image, Labels, Points
+from napari.utils.notifications import show_info, show_warning
 from napari.qt.threading import thread_worker
 
 import pathlib
@@ -414,10 +414,10 @@ def g_calc(viewer: Viewer,
 
 
 @magic_factory(call_button='Estimate E-FRET',
-               output_type={"choices": ['Eapp', 'Fc', 'Ecorr']},)
+               output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                a:float=0.1846, d:float=0.2646, G:float=0.0,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=
-               output_type:str='Eapp',
+               output_type:str='Fc',
                save_normalized:bool=True):
     if input is not None:
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
@@ -458,7 +458,7 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
 @magic_factory(call_button='Calc Red-Green')
 def der_series(viewer: Viewer, img:Image,
-               left_frames:int=1, space_frames:int=1, right_frames:int=1,
+               left_frames:int=1, space_frames:int=0, right_frames:int=1,
                normalize_by_int:bool=True,
                save_MIP:bool=False):
     if input is not None:
@@ -703,18 +703,14 @@ def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
             
 
 @magic_factory(call_button='Build Profiles',
-               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
-               saving_path={'mode': 'd'})
+               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},)
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
-                        time_scale:float=5.0,
+                        time_scale:float=1.0,
                         values_mode='ΔF/F0',
-                        ΔF_win:int=5,
+                        ΔF_win:int=15,
                         use_simple_baseline:bool=False,
                         profiles_crop:bool=False,
-                        profiles_range:list=[0,10],
-                        save_data_frame:bool=False,
-                        save_ROIs_distances:bool=False,
-                        saving_path:pathlib.Path = os.getcwd()):
+                        profiles_range:list=[0,10]):
     if input is not None:
         input_img = img.data
         input_labels = labels.data
@@ -722,20 +718,6 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         df_name = df_name.replace('_xform','')
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
-
-        if save_ROIs_distances:
-            col_list = ['id','roi','int', 'dist', 'index', 'time']
-            tip_position_img = np.ones_like(input_img[0], dtype=bool)
-            tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
-            tip_position_img[tip_x,tip_y] = False
-            tip_distance_img = ndi.distance_transform_edt(tip_position_img)
-            distance_list = []
-            for label_num in np.unique(input_labels)[1:]:
-                region_mask = input_labels == label_num
-                distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
-            show_info(f'{img.name}: center position {tip_x, tip_y}')
-        else:
-            col_list = ['id','roi','int', 'index', 'time']
 
         if use_simple_baseline:
             fun_delta = utils.delta_prof_simple
@@ -766,25 +748,6 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         end = time.perf_counter()
         show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
 
-        if save_data_frame:
-            output_df = pd.DataFrame(columns=col_list)
-
-            for num_ROI in range(profile_to_plot.shape[0]):
-                profile_ROI = profile_to_plot[num_ROI]
-                dict_ROI = {'id':img.name,
-                            'roi':num_ROI+1,
-                            'int':profile_ROI,
-                            'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
-                            'time':time_line}
-                if save_ROIs_distances:
-                    dict_ROI['dist'] = distance_list[num_ROI]
-
-                df_ROI = pd.DataFrame(dict_ROI)
-                output_df = pd.concat([output_df.astype(df_ROI.dtypes),
-                                       df_ROI.astype(output_df.dtypes)],
-                                      ignore_index=True)
-            output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
-
         # plotting
         if profiles_crop:
             profile_to_plot = profile_to_plot[:,profiles_range[0]:profiles_range[1]]
@@ -814,11 +777,37 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
 def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
                               lab:Labels,
                               profiles_num:str='1',
-                              time_scale:float=5.0,
+                              time_scale:float=1.0,
                               values_mode:str='ΔF/F0',
-                              ΔF_win:int=5,
+                              ΔF_win:int=15,
                               use_simple_baseline:bool=False, 
                               stat_method:str='se'):
+    """ Builds profiles from labels and calculates statistics for them.
+    Parameters
+    ----------
+    viewer : Viewer
+        napari viewer instance.
+    img_0 : Image
+        First image to build profiles from.
+    img_1 : Image
+        Second image to build profiles from (optional, if profiles_num is '2' or '3').
+    img_2 : Image
+        Third image to build profiles from (optional, if profiles_num is '3').
+    lab : Labels
+        Labels to build profiles from.
+    profiles_num : str, optional
+        Number of profiles to build, by default '1'. Can be '1', '2', or '3'.
+    time_scale : float, optional
+        Time scale for the profiles, by default 1.0.
+    values_mode : str, optional
+        Mode of values to calculate, by default 'ΔF/F0'. Can be 'abs.', 'ΔF', or 'ΔF/F0'.
+    ΔF_win : int, optional
+        Window size for ΔF calculation, by default 15.
+    use_simple_baseline : bool, optional
+        Whether to use simple baseline for ΔF calculation, by default False.
+    stat_method : str, optional
+        Method to calculate statistics, by default 'se'. Can be 'se', 'iqr', or 'ci'. 
+    """
     if input is not None:
         # mean, se
         arr_se_stat = lambda x: (np.mean(x, axis=0), \
@@ -910,7 +899,6 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
         end = time.perf_counter()
         show_info(f'Profiles calculated in {end-start:.2f} s')
 
-
         # plotting
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
@@ -948,10 +936,10 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         lab_0:Labels, lab_1:Labels, lab_2:Labels,
-                        time_scale:float=5.0,
+                        time_scale:float=1.0,
                         labels_num:str='1',
                         values_mode:str='ΔF/F0',
-                        ΔF_win:int=5,
+                        ΔF_win:int=15,
                         use_simple_baseline:bool=False, 
                         stat_method:str='se'):
     if input is not None:
@@ -1072,6 +1060,83 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         plt.legend()
         plt.title(f'{img.name}, method {stat_method}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Lab Stat Prof.')
+
+
+@magic_factory(call_button='Build Profiles',
+               saving_path={'mode': 'd'})
+def save_df(img:Image, labels:Labels, stim_position:Points,
+            time_scale:float=1.0,
+            ΔF_win:int=15,
+            use_simple_baseline:bool=False,
+            save_ROIs_distances:bool=False,
+            use_stim_position_for_distances:bool=False,
+            saving_path:pathlib.Path = os.getcwd()):
+    if input is not None:
+        input_img = img.data
+        input_labels = labels.data
+        df_name = img.name + '_' + labels.name
+        df_name = df_name.replace('_xform','')
+        time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
+                                num=input_img.shape[0])
+
+        if save_ROIs_distances:
+            col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int']
+            tip_position_img = np.ones_like(input_img[0], dtype=bool)
+            if use_stim_position_for_distances:
+                try:
+                    tip_x, tip_y = int(stim_position.data[0][1]), int(stim_position.data[0][2])  # for time series
+                    tip_position_img[tip_x,tip_y] = False
+                except AttributeError:
+                    show_warning(f"{img.name}: no stim position, using img center position!")
+                    tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
+                    tip_position_img[tip_x,tip_y] = False
+            else:
+                tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
+                tip_position_img[tip_x,tip_y] = False
+            tip_distance_img = ndi.distance_transform_edt(tip_position_img)
+            distance_list = []
+            for label_num in np.unique(input_labels)[1:]:
+                region_mask = input_labels == label_num
+                distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
+            show_info(f'{img.name}: center position {tip_x, tip_y}')
+        else:
+            col_list = ['id', 'lab_id', 'roi', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int']
+
+        if use_simple_baseline:
+            fun_delta = utils.delta_prof_simple
+        else:
+            fun_delta = utils.delta_prof_pybase
+
+        start = time.perf_counter()
+        profile_raw = utils.labels_to_profiles(input_label=input_labels,
+                                               input_img=input_img)
+        profile_abs = np.round(profile_raw, decimals=4)
+        profile_dF = fun_delta(profile_raw, win_size=ΔF_win, mode='dF')
+        profile_dF_F0 = fun_delta(profile_raw, win_size=ΔF_win, mode='dF/F0')
+
+        end = time.perf_counter()
+        show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
+
+        output_df = pd.DataFrame(columns=col_list)
+        for num_ROI in range(profile_abs.shape[0]):
+            ROI_abs = profile_abs[num_ROI]
+            ROI_dF = profile_dF[num_ROI]
+            ROI_dF_F0 = profile_dF_F0[num_ROI]
+            dict_ROI = {'id':img.name,
+                        'lab_id':labels.name,
+                        'roi':num_ROI+1,
+                        'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
+                        'time':time_line,
+                        'abs_int':ROI_abs,
+                        'dF_int':ROI_dF,
+                        'dF/F0_int':ROI_dF_F0}
+            if save_ROIs_distances:
+                dict_ROI['dist'] = distance_list[num_ROI]
+            df_ROI = pd.DataFrame(dict_ROI)
+            output_df = pd.concat([output_df.astype(df_ROI.dtypes),
+                                    df_ROI.astype(output_df.dtypes)],
+                                    ignore_index=True)
+        output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
 
 
 if __name__ == '__main__':
