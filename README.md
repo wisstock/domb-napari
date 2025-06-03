@@ -19,7 +19,9 @@ This plugin offers widgets specifically designed to analyze the redistribution o
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
+
 ---
+
 
 ## Preprocessing
 ### Dual-view Stack Registration
@@ -40,7 +42,9 @@ Registration of four-channel image stacks, including two excitation wavelengths 
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stack_preprocessing.png)
 
+
 ---
+
 
 ## Detection of Fluorescence Redistribution
 A set of widgets designed for preprocessing multispectral image stacks and detecting redistributions in fluorescence intensity. These widgets specifically analyze differential "red-green" image series to identify changes in fluorescence intensity.
@@ -62,10 +66,12 @@ If `save MIP` is selected, the maximal intensity projection (MIP) of the differe
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rg_series.png)
 
-### ΔF/F Series
+### ΔF & ΔF/F Series
 _In progress._
 
+
 ---
+
 
 ## Masking
 ### Dots Pattern Masking
@@ -121,7 +127,9 @@ Extension of __Up Masking__ widget. Detects regions with increasing (`masking mo
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_labels.png)
 
+
 ---
+
 
 ## 3-cube E-FRET Approach
 Widgets for detection and analysis of Förster resonance energy transfer on multispectral image stacks.
@@ -260,17 +268,6 @@ This widget builds a plot with mean intensity profiles for each Region of Intere
 - `values mod` - the mode of output profile calculation. Options are `ΔF/F0` (relative intensity changes), `ΔF` (absolute intensity changes), or `abs` (absolute intensity value)
 - `ΔF win` - if selected `use_simple_baseline`, the baseline intensity for ΔF/F0 profiles is estimated as the mean intensity of the specified number of initial profile points. Othervise, this paramater specify half-size of the moving median baseline estimator (`noisy_median` from `pybaselines` package).
 - `profiles crop` - if selected, only a specified range of intensity profile indexes will be plotted, corresponding to the start and stop indexes from `profiles range`.
-
-Additionally, you can save ROI intensity profiles as .csv files using the `save data frame` option and specifying the `saving path`. The output data frames named %img_name%_lab_prof.csv will include the following columns:
-
-- `id` - unique image ID, the name of the input `napari.Image` object.
-- `roi` - ROI number, consecutively numbered starting from 1.
-- `int` - ROI mean intensity, either raw or ΔF/F0, according to the selected intensity option.
-- `dist` - average distance in px to the ROI from the frame, (if `save ROIs distances in data frame` option is selected).
-- `index` - frame index.
-- `time` - frame time point, adjusted according to the `time scale`.
-
-_Note: the data frame will contain information for all ROIs; amplitude filtering and crop options pertain to plotting only._
 
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rois_abs.png)
 :-------------------------:|:-------------------------:
