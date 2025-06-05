@@ -41,9 +41,11 @@ import domb_napari._utils as utils
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
-                   median_filter:bool=True, median_kernel:int=2,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
+                   median_filter:bool=False, median_kernel:int=2,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
+                   use_correction_mask:bool=True,
+                   correction_mask:Labels=None,
                    correction_method:str='exp',
                    drop_frames:bool=False,
                    frames_range:list=[0,10]):
@@ -54,11 +56,12 @@ def split_channels(viewer: Viewer, img:Image,
             try: 
                 viewer.layers[img_name].data = img
             except KeyError:
-                new_image = viewer.add_image(img, name=img_name, colormap='turbo')
+                viewer.add_image(img, name=img_name, colormap='turbo')
 
         @thread_worker(connect={'yielded':_save_ch})
         def _split_channels():
             def _preprocessing(ch_img, ch_suffix):
+                start = time.perf_counter()
                 if drop_frames:
                     if len(frames_range) == 2:
                         ch_img = ch_img[frames_range[0]:frames_range[-1],:,:]
@@ -69,16 +72,23 @@ def split_channels(viewer: Viewer, img:Image,
                     median_axis = lambda x,k: np.array([ndi.median_filter(f, size=k) for f in x], dtype=x.dtype)
                     ch_img = median_axis(ch_img, median_kernel)
                 if background_substraction:
-                    bc_p = lambda x: np.array([f - np.percentile(f, 0.5) for f in x]).clip(min=0).astype(dtype=x.dtype)
-                    ch_img = bc_p(ch_img)
+                    ch_img = utils.back_substr(ch_img, percentile=1.0)
                 if photobleaching_correction:
-                    pb_mask = masking.proc_mask(np.mean(ch_img, axis=0))
-                    ch_img,_,r_corr = masking.pb_exp_correction(input_img=ch_img,
-                                                                mask=pb_mask,
-                                                                method=correction_method)
+                    if correction_mask is not None and use_correction_mask:
+                        pb_mask = correction_mask.data
+                        show_info(f'{ch_suffix} photobleaching correction with mask {correction_mask.name}')
+                    else:
+                        pb_mask = ch_img[:,:,0] > filters.threshold_otsu(ch_img[:,:,0])
+                        show_info(f'{ch_suffix} photobleaching correction with Otsu mask')
+                    ch_img,_,r_corr = utils.pb_exp_correction(input_img=ch_img,
+                                                              mask=pb_mask,
+                                                              method=correction_method)
                     show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
+                end = time.perf_counter()
+                show_info(f'{ch_suffix} preprocessing time: {end - start:.2f} s')
                 return (ch_img, img.name+ch_suffix)
 
+            show_info(f'{img.name}: preprocessing started, data type {img.data.dtype}, shape {img.data.shape}')
             if img.data.ndim == 4:
                 show_info(f'{img.name}: Ch. split and preprocessing mode, shape {img.data.shape}')
                 if stack_order == 'TCXY':
@@ -89,8 +99,8 @@ def split_channels(viewer: Viewer, img:Image,
                     show_info(f'{img.name}: Ch. {i} preprocessing')
                     yield _preprocessing(ch_img=input_img[:,i,:,:], ch_suffix=f'_ch{i}')
             elif img.data.ndim == 3:
-                show_info(f'{img.name}: Image already has 3 dimensions, preprocessing only mode')
-                yield _preprocessing(ch_img=img.data, ch_suffix=f'_ch0')
+                show_info(f'{img.name}: image already has 3 dimensions, preprocessing only mode')
+                yield _preprocessing(ch_img=img.data, ch_suffix='_ch0')
             else:
                 raise ValueError('Input image should have 3 or 4 dimensions!')       
         
@@ -102,7 +112,7 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                     use_reference_img:bool=False,
                     ch_ref:int=3,
                     ch_offset:int=0,
-                    input_crop:int=25, output_crop:int=20):
+                    input_crop:int=30, output_crop:int=20):
     if input is not None:
         if offset_img.data.ndim == 4:
 
@@ -134,7 +144,6 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 transform = AffineTransform2D()
                 affine = affreg.optimize(master_img_ref, master_img_offset,
                                         transform, params0=None)
-                # master_img_xform = affine.transform(master_img_offset)
 
                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
@@ -146,7 +155,6 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 if output_crop != 0:
                     yo, xo = xform_series.shape[-2:]
                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
-                
                 yield xform_series.astype(offset_series.dtype)
                     
             _dw_registration()
@@ -465,18 +473,6 @@ def der_series(viewer: Viewer, img:Image,
         if img.data.ndim != 3:
             raise ValueError('The input image should have 3 dimensions!')
 
-        def _red_green():
-            """ Red-green colormap
-
-            """
-            return vispy.color.Colormap([[0.0, 1.0, 0.0],
-                                         [0.0, 0.9, 0.0],
-                                         [0.0, 0.85, 0.0],
-                                         [0.0, 0.0, 0.0],
-                                         [0.85, 0.0, 0.0],
-                                         [0.9, 0.0, 0.0],
-                                         [1.0, 0.0, 0.0]])
-
         def _save_rg_img(params):
             img = params[0]
             img_name = params[1]
@@ -488,7 +484,7 @@ def der_series(viewer: Viewer, img:Image,
                 else:
                     c_lim = np.max(np.abs(img)) * 0.75
                 new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
-                new_image.colormap = 'red-green', _red_green()
+                new_image.colormap = 'red-green', utils.red_green_cmap()
 
         @thread_worker(connect={'yielded':_save_rg_img})
         def _der_series():
@@ -516,6 +512,33 @@ def der_series(viewer: Viewer, img:Image,
                 yield (der_mip, img.name + '_red-green-MIP')
 
         _der_series()
+
+
+@magic_factory(call_button='Calc relative intensity',
+               values_mode={"choices": ['ΔF', 'ΔF/F0']},)
+def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5):
+    if input is not None:
+        if img.data.ndim != 3:
+            raise ValueError('The input image should have 3 dimensions!')
+
+        def _save_rel_img(params):
+            img = params[0]
+            img_name = params[1]
+            try:
+                viewer.layers[img_name].data = img
+            except KeyError:
+                c_lim = np.max(np.abs(img)) * 0.8
+                new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
+                new_image.colormap = 'magenta-blue', utils.delta_cmap()
+
+        @thread_worker(connect={'yielded':_save_rel_img})
+        def _rel_series():
+            input_img = img.data
+            mode_dict = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0'}
+            output_img = utils.delta_img(input_img, mode=mode_dict[values_mode], win_size=F0_win)
+            yield (output_img, img.name + f'_{values_mode}')
+
+        _rel_series()
 
 
 @magic_factory(call_button='Build Dots Mask',
@@ -782,32 +805,6 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                               ΔF_win:int=15,
                               use_simple_baseline:bool=False, 
                               stat_method:str='se'):
-    """ Builds profiles from labels and calculates statistics for them.
-    Parameters
-    ----------
-    viewer : Viewer
-        napari viewer instance.
-    img_0 : Image
-        First image to build profiles from.
-    img_1 : Image
-        Second image to build profiles from (optional, if profiles_num is '2' or '3').
-    img_2 : Image
-        Third image to build profiles from (optional, if profiles_num is '3').
-    lab : Labels
-        Labels to build profiles from.
-    profiles_num : str, optional
-        Number of profiles to build, by default '1'. Can be '1', '2', or '3'.
-    time_scale : float, optional
-        Time scale for the profiles, by default 1.0.
-    values_mode : str, optional
-        Mode of values to calculate, by default 'ΔF/F0'. Can be 'abs.', 'ΔF', or 'ΔF/F0'.
-    ΔF_win : int, optional
-        Window size for ΔF calculation, by default 15.
-    use_simple_baseline : bool, optional
-        Whether to use simple baseline for ΔF calculation, by default False.
-    stat_method : str, optional
-        Method to calculate statistics, by default 'se'. Can be 'se', 'iqr', or 'ci'. 
-    """
     if input is not None:
         # mean, se
         arr_se_stat = lambda x: (np.mean(x, axis=0), \
@@ -1064,12 +1061,13 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
 
 @magic_factory(call_button='Build Profiles',
                saving_path={'mode': 'd'})
-def save_df(img:Image, labels:Labels, stim_position:Points,
+def save_df(img:Image, labels:Labels,
             time_scale:float=1.0,
             ΔF_win:int=15,
             use_simple_baseline:bool=False,
             save_ROIs_distances:bool=False,
-            use_stim_position_for_distances:bool=False,
+            custom_stim_position:bool=False,
+            stim_position:Points=None,
             saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         input_img = img.data
@@ -1082,7 +1080,7 @@ def save_df(img:Image, labels:Labels, stim_position:Points,
         if save_ROIs_distances:
             col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int']
             tip_position_img = np.ones_like(input_img[0], dtype=bool)
-            if use_stim_position_for_distances:
+            if custom_stim_position:
                 try:
                     tip_x, tip_y = int(stim_position.data[0][1]), int(stim_position.data[0][2])  # for time series
                     tip_position_img[tip_x,tip_y] = False

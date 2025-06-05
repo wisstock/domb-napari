@@ -13,7 +13,7 @@ __napari Toolkit of Department of Molecular Biophysics <br /> Bogomoletz Institu
 
 This plugin offers widgets specifically designed to analyze the redistribution of fluorescence-labeled proteins in widefield epifluorescence time-lapse acquisitions. It is particularly useful for studying various phenomena, including:
 - Calcium-dependent translocation of neuronal calcium sensors.
-- Synaptic receptor traffic during long-term plasticity induction.
+- Synaptic receptor traffic.
 - Membrane protein tracking.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
@@ -264,9 +264,11 @@ The `calc projections` option allows obtaining individual pH series projections 
 ### ROIs Profiles
 This widget builds a plot with mean intensity profiles for each Region of Interest (ROI) in labels. It uses either absolute intensity (if `absolute intensity` is selected) or relative intensities (ΔF/F0).
 
+Parameters:
+
 - `time scale` - sets the number of seconds between frames for x-axis scaling.
 - `values mod` - the mode of output profile calculation. Options are `ΔF/F0` (relative intensity changes), `ΔF` (absolute intensity changes), or `abs` (absolute intensity value)
-- `ΔF win` - if selected `use_simple_baseline`, the baseline intensity for ΔF/F0 profiles is estimated as the mean intensity of the specified number of initial profile points. Othervise, this paramater specify half-size of the moving median baseline estimator (`noisy_median` from `pybaselines` package).
+- `ΔF win`: if the `use_simple_baseline` option is selected, the baseline intensity is estimated as the mean intensity of the specified number of initial profile points. Otherwise, this parameter specifies the window half-size of the moving median baseline estimator (`noisy_median` from the `pybaselines` package).
 - `profiles crop` - if selected, only a specified range of intensity profile indexes will be plotted, corresponding to the start and stop indexes from `profiles range`.
 
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rois_abs.png)
@@ -304,8 +306,21 @@ Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb
 __ΔF/F0__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stat_lab_df.png)
 
 ### Save Data Frame
-This widget allows saving the data frame with the following columns:
+This widget enables you to save the data frame in CSV format.
+This is particularly useful for exporting results after examining them with the __ROIs Profiles__ widget.
 
+Parameters:
+
+- `img` - input for a single channel time series image stack.
+- `lab` - input for a labels layer with ROIs.
+- `stim position` - input for a points layer with stimulation electrode position, should contain a single point only.
+- `time scale` - sets the number of seconds between frames for frames indexes scaling.
+- `ΔF win`: if the `use_simple_baseline` option is selected, the baseline intensity is estimated as the mean intensity of the specified number of initial profile points. Otherwise, this parameter specifies the window half-size of the moving median baseline estimator (`noisy_median` from the `pybaselines` package).
+- `save ROIs distances` - if selected, the average distance in pixels from the ROI to the frame will be saved in the data frame.
+- `custom stim position` - if selected, a custom stimulation electrode position from `stim position` layer will be used for distance calculations.
+- `saving path` - path to save the data frame.
+
+The output data contains the following columns:
 - `id` - unique image ID, the name of the input `napari.Image` object.
 - `lab_id` - unique label ID, the name of the input `napari.Labels` object.
 - `roi` - ROI number, consecutively numbered starting from 1.

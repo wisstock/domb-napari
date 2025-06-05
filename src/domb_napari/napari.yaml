@@ -43,6 +43,9 @@ contributions:
     - id: domb-napari.save_df_widget
       title: Save DataFrame
       python_name: domb_napari._widget:save_df
+    - id: domb-napari.rel_series_widget
+      title: ΔF series
+      python_name: domb_napari._widget:rel_series
   widgets:
     - command: domb-napari.dw_registration_widget
       display_name: Dual-view stack registration
@@ -50,6 +53,8 @@ contributions:
       display_name: Multichannel stack preprocessing
     - command: domb-napari.der_series_widget
       display_name: Red-green series
+    - command: domb-napari.rel_series_widget
+      display_name: ΔF series
     - command: domb-napari.cross_calc_widget
       display_name: E-FRET crosstalk estimation
     - command: domb-napari.g_calc_widget
