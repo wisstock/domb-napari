@@ -529,7 +529,7 @@ def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5):
             except KeyError:
                 c_lim = np.max(np.abs(img)) * 0.8
                 new_image = viewer.add_image(img, name=img_name, contrast_limits=[-c_lim, c_lim])
-                new_image.colormap = 'magenta-blue', utils.delta_cmap()
+                new_image.colormap = 'delta', utils.delta_smooth_cmap()
 
         @thread_worker(connect={'yielded':_save_rel_img})
         def _rel_series():
