@@ -22,8 +22,6 @@ from skimage import restoration
 from skimage import feature
 from skimage import segmentation
 
-import vispy.color
-
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 
@@ -34,6 +32,7 @@ from domb.utils import masking
 from domb.fret.e_fret import e_app
 
 import domb_napari._utils as utils
+import domb_napari._e_fret as e_fret
 
 
 @magic_factory(call_button='Preprocess stack',

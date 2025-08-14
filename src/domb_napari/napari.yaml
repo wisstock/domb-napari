@@ -1,4 +1,6 @@
 name: domb-napari
+display_name: domb-napari
+schema_version: 0.1.0
 contributions:
   commands:
     - id: domb-napari.split_channels_widget
