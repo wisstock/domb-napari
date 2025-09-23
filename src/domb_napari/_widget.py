@@ -47,7 +47,8 @@ def split_channels(viewer: Viewer, img:Image,
                    correction_mask:Labels=None,
                    correction_method:str='exp',
                    drop_frames:bool=False,
-                   frames_range:list=[0,10]):
+                   frames_range:list=[0,10],
+                   frames_crop:int=0):
     if input is not None:
         def _save_ch(params):
             img = params[0]
@@ -83,6 +84,9 @@ def split_channels(viewer: Viewer, img:Image,
                                                               mask=pb_mask,
                                                               method=correction_method)
                     show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
+                if frames_crop != 0:
+                    yo, xo = ch_img.shape[-1:]
+                    ch_img = ch_img[:,frames_crop:yo-frames_crop,frames_crop:xo-frames_crop]
                 end = time.perf_counter()
                 show_info(f'{ch_suffix} preprocessing time: {end - start:.2f} s')
                 return (ch_img, img.name+ch_suffix)
@@ -90,9 +94,9 @@ def split_channels(viewer: Viewer, img:Image,
             show_info(f'{img.name}: preprocessing started, data type {img.data.dtype}, shape {img.data.shape}')
             if img.data.ndim == 4:
                 show_info(f'{img.name}: Ch. split and preprocessing mode, shape {img.data.shape}')
-                if stack_order == 'TCXY':
-                    input_img = img.data
-                elif stack_order == 'CTXY':
+                if stack_order == 'TCXY':    # for LA data
+                    input_img = img.data   
+                elif stack_order == 'CTXY':  # for confocal data
                     input_img = np.moveaxis(img.data,0,1)
                 for i in range(0,img.data.shape[1]):
                     show_info(f'{img.name}: Ch. {i} preprocessing')
@@ -106,15 +110,75 @@ def split_channels(viewer: Viewer, img:Image,
         _split_channels()
 
 
-@magic_factory(call_button='Align stack')
-def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
-                    use_reference_img:bool=False,
-                    ch_ref:int=3,
-                    ch_offset:int=0,
-                    input_crop:int=30, output_crop:int=20):
+# @magic_factory(call_button='Align stack')
+# def dw_registration_old(viewer: Viewer, offset_img:Image, reference_img:Image,
+#                     use_reference_img:bool=False,
+#                     ch_ref:int=3,
+#                     ch_offset:int=0,
+#                     input_crop:int=30, output_crop:int=20):
+#     if input is not None:
+#         if offset_img.data.ndim == 4:
+
+#             def _save_aligned(img):
+#                 xform_name = offset_img.name+'_xform'
+#                 try: 
+#                     viewer.layers[xform_name].data = img
+#                     viewer.layers[xform_name].colormap = 'turbo'
+#                 except KeyError:
+#                     viewer.add_image(img, name=xform_name, colormap='turbo')
+
+#             @thread_worker(connect={'yielded':_save_aligned})
+#             def _dw_registration():
+#                 offset_series = offset_img.data
+#                 master_img = reference_img.data
+
+#                 if input_crop != 0:
+#                     y, x = offset_series.shape[-2:]
+#                     offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
+#                     master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
+
+#                 if use_reference_img:
+#                     master_img_ref, master_img_offset = master_img[1], master_img[0]
+#                 else:
+#                     master_img_ref = np.mean(offset_series[:,ch_ref,:,:], axis=0)
+#                     master_img_offset = np.mean(offset_series[:,ch_offset,:,:], axis=0)
+
+#                 affreg = AffineRegistration()
+#                 transform = AffineTransform2D()
+#                 affine = affreg.optimize(master_img_ref, master_img_offset,
+#                                         transform, params0=None)
+
+#                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
+#                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
+#                 xform_series = np.stack((ch0_xform,
+#                                          offset_series[:,1,:,:],
+#                                          ch2_xform,
+#                                          offset_series[:,3,:,:]),
+#                                         axis=1)
+#                 if output_crop != 0:
+#                     yo, xo = xform_series.shape[-2:]
+#                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
+#                 yield xform_series.astype(offset_series.dtype)
+                    
+#             _dw_registration()
+#         else:
+#             raise ValueError('Incorrect input image shape!')
+
+
+@magic_factory(call_button='Align stack',
+               align_method={"choices": ['internal', 'reference', 'load matrix']},
+               reference_channel={"choices": [0, 1]},  # brighter channel should be used as reference
+               saving_path={'mode': 'r', 'filter': 'Text files (*.txt)'},)
+def dw_registration(viewer: Viewer, offset_img:Image,
+                    input_crop:int=30, output_crop:int=30,
+                    align_method:str='internal',
+                    reference_channel:int=1,
+                    reference_img:Image=None,
+                    load_matrix:pathlib.Path = None,
+                    save_matrix:bool=False,
+                    saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         if offset_img.data.ndim == 4:
-
             def _save_aligned(img):
                 xform_name = offset_img.name+'_xform'
                 try: 
@@ -142,7 +206,7 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                 affreg = AffineRegistration()
                 transform = AffineTransform2D()
                 affine = affreg.optimize(master_img_ref, master_img_offset,
-                                        transform, params0=None)
+                                         transform, params0=None)
 
                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
@@ -155,10 +219,16 @@ def dw_registration(viewer: Viewer, offset_img:Image, reference_img:Image,
                     yo, xo = xform_series.shape[-2:]
                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
                 yield xform_series.astype(offset_series.dtype)
+
+
+            if offset_img.data.shape[1] == 2:  # 1 ext with DV
+                show_info(f'{offset_img.name}: 2 spectral ch.')
+            if offset_img.data.shape[1] == 4:  # 2 ext with DV
+                show_info(f'{offset_img.name}: 4 spectral ch.')
                     
             _dw_registration()
         else:
-            raise ValueError('Incorrect input image shape!')
+            raise ValueError('Incorrect dimensions of the input image!')
 
 
 @magic_factory(call_button='Split SEP',
