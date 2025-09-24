@@ -166,21 +166,19 @@ def split_channels(viewer: Viewer, img:Image,
 
 
 @magic_factory(call_button='Align stack',
-               align_method={"choices": ['internal', 'reference', 'load matrix']},
-               reference_channel={"choices": [0, 1]},  # brighter channel should be used as reference
-               saving_path={'mode': 'r', 'filter': 'Text files (*.txt)'},)
+               align_method={"choices": ['internal', 'load matrix', 'reference']},
+               load_matrix={'mode': 'r', 'filter': 'Text files (*.txt)'},
+               saving_path={'mode': 'd'},)
 def dw_registration(viewer: Viewer, offset_img:Image,
                     input_crop:int=30, output_crop:int=30,
-                    align_method:str='internal',
-                    reference_channel:int=1,
-                    reference_img:Image=None,
+                    align_method:str='internal',  # reference_img:Image=None,
                     load_matrix:pathlib.Path = None,
                     save_matrix:bool=False,
                     saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         if offset_img.data.ndim == 4:
             def _save_aligned(img):
-                xform_name = offset_img.name+'_xform'
+                xform_name = offset_img.name+'_aligned'
                 try: 
                     viewer.layers[xform_name].data = img
                     viewer.layers[xform_name].colormap = 'turbo'
@@ -189,42 +187,84 @@ def dw_registration(viewer: Viewer, offset_img:Image,
 
             @thread_worker(connect={'yielded':_save_aligned})
             def _dw_registration():
-                offset_series = offset_img.data
-                master_img = reference_img.data
+                input_data = offset_img.data
+                
+                start = time.perf_counter()
+                if input_crop != 0:  # optional input crop for better registration and border artefacts removal
+                    y, x = input_data.shape[-2:]
+                    input_data = input_data[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
 
-                if input_crop != 0:
-                    y, x = offset_series.shape[-2:]
-                    offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
-                    master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
+                if align_method == 'internal':
+                    show_info(f'{offset_img.name}: internal alignment mode')
+                    affreg = AffineRegistration()
+                    transform = AffineTransform2D()
 
-                if use_reference_img:
-                    master_img_ref, master_img_offset = master_img[1], master_img[0]
-                else:
-                    master_img_ref = np.mean(offset_series[:,ch_ref,:,:], axis=0)
-                    master_img_offset = np.mean(offset_series[:,ch_offset,:,:], axis=0)
+                    if input_data.shape[1] == 2:  # 1 ext with DV
+                        ref_frame = np.mean(input_data[:,1,:,:], axis=0)
+                        move_frame = np.mean(input_data[:,0,:,:], axis=0)
+                    elif input_data.shape[1] == 4:  # 2 ext with DV
+                        show_info(f'{offset_img.name}: 4 spectral ch.')
+                        ref_frame = np.mean(input_data[:,3,:,:], axis=0)
+                        move_frame = np.mean(input_data[:,0,:,:], axis=0)
+                    else:
+                        raise ValueError(f'The input image have {input_data.shape[1]} spectral ch., but 2 or 4 ch. are required!')
 
-                affreg = AffineRegistration()
-                transform = AffineTransform2D()
-                affine = affreg.optimize(master_img_ref, master_img_offset,
-                                         transform, params0=None)
+                    affine_params = affreg.optimize(ref_frame, move_frame,
+                                                    transform, params0=None)
+                    
+                    if input_data.shape[1] == 2:  # 1 ext with DV
+                        reg_channel = np.array([affine_params.transform(frame) for frame in input_data[:,0,:,:]],
+                                               dtype=input_data.dtype)
+                        output_data = np.stack((reg_channel,
+                                                input_data[:,1,:,:]),
+                                               axis=1)
+                    if input_data.shape[1] == 4:  # 2 ext with DV
+                        reg_channel_0 = np.array([affine_params.transform(frame) for frame in input_data[:,0,:,:]],
+                                                 dtype=input_data.dtype)
+                        reg_channel_2 = np.array([affine_params.transform(frame) for frame in input_data[:,2,:,:]],
+                                                 dtype=input_data.dtype)
+                        output_data = np.stack((reg_channel_0,
+                                                input_data[:,1,:,:],
+                                                reg_channel_2,
+                                                input_data[:,3,:,:]),
+                                               axis=1)
+                    if save_matrix:
+                        matrix_name = f"{offset_img.name}_affine_matrix.txt"
+                        np.savetxt(os.path.join(saving_path, matrix_name), affine_params.affine)
+                        show_info(f'{offset_img.name}: affine matrix saved to {os.path.join(saving_path, matrix_name)}')
+                elif align_method == 'load matrix':
+                    affine_matrix = np.loadtxt(load_matrix)
+                    show_info(f'{offset_img.name}: affine matrix loaded from {load_matrix}')
+                    if input_data.shape[1] == 2:  # 1 ext with DV
+                        reg_channel = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,0,:,:]],
+                                                dtype=input_data.dtype)
+                        output_data = np.stack((reg_channel,
+                                                input_data[:,1,:,:]),
+                                                axis=1)
+                    elif input_data.shape[1] == 4:  # 2 ext with DV
+                        reg_channel_0 = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,0,:,:]],
+                                                 dtype=input_data.dtype)
+                        reg_channel_2 = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,2,:,:]],
+                                                 dtype=input_data.dtype)
+                        output_data = np.stack((reg_channel_0,
+                                                input_data[:,1,:,:],
+                                                reg_channel_2,
+                                                input_data[:,3,:,:]),
+                                               axis=1)                   
+                    else:
+                        raise ValueError(f'The input image have {input_data.shape[1]} spectral ch., but 2 or 4 ch. are required!')
 
-                ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
-                ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
-                xform_series = np.stack((ch0_xform,
-                                         offset_series[:,1,:,:],
-                                         ch2_xform,
-                                         offset_series[:,3,:,:]),
-                                        axis=1)
-                if output_crop != 0:
-                    yo, xo = xform_series.shape[-2:]
-                    xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
-                yield xform_series.astype(offset_series.dtype)
+                elif align_method == 'reference':
+                    show_warning('Sorry, this mode is under development!')
 
+                if output_crop != 0:  # optional output crop for border artefacts of the registration removal
+                    yo, xo = output_data.shape[-2:]
+                    output_data = output_data[:,:,input_crop:yo-input_crop,input_crop:xo-input_crop]
+                
+                end = time.perf_counter()
+                show_info(f'{offset_img.name}: stack aligned in {end-start:.2f} s')
+                yield output_data.astype(input_data.dtype)
 
-            if offset_img.data.shape[1] == 2:  # 1 ext with DV
-                show_info(f'{offset_img.name}: 2 spectral ch.')
-            if offset_img.data.shape[1] == 4:  # 2 ext with DV
-                show_info(f'{offset_img.name}: 4 spectral ch.')
                     
             _dw_registration()
         else:

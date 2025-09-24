@@ -170,6 +170,26 @@ def back_substr(input_img:np.ndarray, percentile:float=1.0):
     return corrected_img.astype(input_type)
 
 
+def get_bright_channel(input_img:np.ndarray):
+    """ Get index of the brightest channel from a multi-channel image series.
+
+    Parameters
+    ----------
+    input_img: ndarray [t,c,x,y]
+        input multi-channel image series
+
+    Returns
+    -------
+    return bright_idx: int
+        index of the brightest channel
+
+    """
+    if input_img.ndim != 4:
+        raise ValueError('Input image must be 4D array with TCXY  order')
+    bright_idx = np.argmax(np.sum(input_img, axis=(0,2,3)))
+    return bright_idx
+
+
 def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
     """ Compute pixel-wise delta image from the input image series.
     
