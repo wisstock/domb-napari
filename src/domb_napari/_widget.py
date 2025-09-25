@@ -28,8 +28,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 from dipy.align.transforms import AffineTransform2D
 from dipy.align.imaffine import AffineRegistration
 
-from domb.utils import masking
-from domb.fret.e_fret import e_app
+# from domb.utils import masking
+# from domb.fret.e_fret import e_app
 
 import domb_napari._utils as utils
 import domb_napari._e_fret as e_fret
@@ -110,61 +110,6 @@ def split_channels(viewer: Viewer, img:Image,
         _split_channels()
 
 
-# @magic_factory(call_button='Align stack')
-# def dw_registration_old(viewer: Viewer, offset_img:Image, reference_img:Image,
-#                     use_reference_img:bool=False,
-#                     ch_ref:int=3,
-#                     ch_offset:int=0,
-#                     input_crop:int=30, output_crop:int=20):
-#     if input is not None:
-#         if offset_img.data.ndim == 4:
-
-#             def _save_aligned(img):
-#                 xform_name = offset_img.name+'_xform'
-#                 try: 
-#                     viewer.layers[xform_name].data = img
-#                     viewer.layers[xform_name].colormap = 'turbo'
-#                 except KeyError:
-#                     viewer.add_image(img, name=xform_name, colormap='turbo')
-
-#             @thread_worker(connect={'yielded':_save_aligned})
-#             def _dw_registration():
-#                 offset_series = offset_img.data
-#                 master_img = reference_img.data
-
-#                 if input_crop != 0:
-#                     y, x = offset_series.shape[-2:]
-#                     offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
-#                     master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
-
-#                 if use_reference_img:
-#                     master_img_ref, master_img_offset = master_img[1], master_img[0]
-#                 else:
-#                     master_img_ref = np.mean(offset_series[:,ch_ref,:,:], axis=0)
-#                     master_img_offset = np.mean(offset_series[:,ch_offset,:,:], axis=0)
-
-#                 affreg = AffineRegistration()
-#                 transform = AffineTransform2D()
-#                 affine = affreg.optimize(master_img_ref, master_img_offset,
-#                                         transform, params0=None)
-
-#                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
-#                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
-#                 xform_series = np.stack((ch0_xform,
-#                                          offset_series[:,1,:,:],
-#                                          ch2_xform,
-#                                          offset_series[:,3,:,:]),
-#                                         axis=1)
-#                 if output_crop != 0:
-#                     yo, xo = xform_series.shape[-2:]
-#                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
-#                 yield xform_series.astype(offset_series.dtype)
-                    
-#             _dw_registration()
-#         else:
-#             raise ValueError('Incorrect input image shape!')
-
-
 @magic_factory(call_button='Align stack',
                align_method={"choices": ['internal', 'load matrix', 'reference']},
                load_matrix={'mode': 'r', 'filter': 'Text files (*.txt)'},
@@ -178,7 +123,7 @@ def dw_registration(viewer: Viewer, offset_img:Image,
     if input is not None:
         if offset_img.data.ndim == 4:
             def _save_aligned(img):
-                xform_name = offset_img.name+'_aligned'
+                xform_name = offset_img.name+'_algn'
                 try: 
                     viewer.layers[xform_name].data = img
                     viewer.layers[xform_name].colormap = 'turbo'
@@ -200,6 +145,7 @@ def dw_registration(viewer: Viewer, offset_img:Image,
                     transform = AffineTransform2D()
 
                     if input_data.shape[1] == 2:  # 1 ext with DV
+                        show_info(f'{offset_img.name}: 2 spectral ch.')
                         ref_frame = np.mean(input_data[:,1,:,:], axis=0)
                         move_frame = np.mean(input_data[:,0,:,:], axis=0)
                     elif input_data.shape[1] == 4:  # 2 ext with DV
@@ -234,14 +180,16 @@ def dw_registration(viewer: Viewer, offset_img:Image,
                         show_info(f'{offset_img.name}: affine matrix saved to {os.path.join(saving_path, matrix_name)}')
                 elif align_method == 'load matrix':
                     affine_matrix = np.loadtxt(load_matrix)
-                    show_info(f'{offset_img.name}: affine matrix loaded from {load_matrix}')
+                    show_info(f'{offset_img.name}: alignment with matrix mode, loaded from {load_matrix}')
                     if input_data.shape[1] == 2:  # 1 ext with DV
+                        show_info(f'{offset_img.name}: 2 spectral ch.')
                         reg_channel = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,0,:,:]],
                                                 dtype=input_data.dtype)
                         output_data = np.stack((reg_channel,
                                                 input_data[:,1,:,:]),
                                                 axis=1)
                     elif input_data.shape[1] == 4:  # 2 ext with DV
+                        show_info(f'{offset_img.name}: 4 spectral ch.')
                         reg_channel_0 = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,0,:,:]],
                                                  dtype=input_data.dtype)
                         reg_channel_2 = np.array([ndi.affine_transform(frame, affine_matrix, output_shape=frame.shape) for frame in input_data[:,2,:,:]],
@@ -264,7 +212,6 @@ def dw_registration(viewer: Viewer, offset_img:Image,
                 end = time.perf_counter()
                 show_info(f'{offset_img.name}: stack aligned in {end-start:.2f} s')
                 yield output_data.astype(input_data.dtype)
-
                     
             _dw_registration()
         else:
@@ -535,6 +482,7 @@ def g_calc(viewer: Viewer,
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                a:float=0.1846, d:float=0.2646, G:float=0.0,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=
                output_type:str='Fc',
+               Ecorr_mask:Labels=None,
                save_normalized:bool=True):
     if input is not None:
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
@@ -550,9 +498,9 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
         @thread_worker(connect={'yielded':_save_e_app})
         def _e_app_calc():
-            e_fret_img = e_app.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
+            e_fret_img = e_fret.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
                                     abcd_list=[a,0,0,d], G_val=G,
-                                    mask=masking.proc_mask(np.mean(AA_img.data, axis=0)))
+                                    mask=Ecorr_mask.data if Ecorr_mask is not None else None)
             output_name = AA_img.name.replace('_ch3','')
             if output_type == 'Ecorr':
                 output_fret_img = e_fret_img.Ecorr_img
@@ -839,8 +787,8 @@ def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=1.0,
                         values_mode='ΔF/F0',
-                        ΔF_win:int=15,
-                        use_simple_baseline:bool=False,
+                        use_simple_baseline:bool=True,
+                        ΔF_win:int=4,
                         profiles_crop:bool=False,
                         profiles_range:list=[0,10]):
     if input is not None:
@@ -867,14 +815,14 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
             df_name = df_name + '_abs'
         elif values_mode == 'ΔF':
             profile_to_plot = fun_delta(profile_abs,
-                                                      win_size=ΔF_win,
-                                                      mode='dF')
+                                        win_size=ΔF_win,
+                                        mode='dF')
             ylab = 'ΔF'
             df_name = df_name + '_ΔF'
         elif values_mode == 'ΔF/F0':
             profile_to_plot = fun_delta(profile_abs,
-                                                      win_size=ΔF_win,
-                                                      mode='dF/F0')
+                                        win_size=ΔF_win,
+                                        mode='dF/F0')
             ylab = 'ΔF/F0'
             df_name = df_name + '_ΔF/F0'
         end = time.perf_counter()
@@ -911,8 +859,8 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                               profiles_num:str='1',
                               time_scale:float=1.0,
                               values_mode:str='ΔF/F0',
-                              ΔF_win:int=15,
-                              use_simple_baseline:bool=False, 
+                              use_simple_baseline:bool=True,
+                              ΔF_win:int=4,
                               stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -1045,8 +993,8 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         time_scale:float=1.0,
                         labels_num:str='1',
                         values_mode:str='ΔF/F0',
-                        ΔF_win:int=15,
-                        use_simple_baseline:bool=False, 
+                        use_simple_baseline:bool=True,
+                        ΔF_win:int=4,
                         stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -1068,9 +1016,16 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         else:
             fun_delta = utils.delta_prof_pybase
 
+        baseline_params = {'win_size': ΔF_win, 
+                           'mode': values_mode} 
+
+        y_lab_dict = {'abs.': 'a.u.',
+                      'ΔF': 'ΔF',
+                      'ΔF/F0': 'ΔF/F0'}
+        ylab = y_lab_dict[values_mode]
+
         # processing
         input_img = img.data
-
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
@@ -1081,17 +1036,9 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                                            input_img=input_img)
         if values_mode == 'abs.':
             selected_profile_0 = np.round(profile_abs_0, decimals=4)
-            ylab = 'a.u.'
-        elif values_mode == 'ΔF':
+        else:
             selected_profile_0 = fun_delta(profile_abs_0,
-                                            win_size=ΔF_win,
-                                            mode='dF')
-            ylab = 'ΔF'
-        elif values_mode == 'ΔF/F0':
-            selected_profile_0 = fun_delta(profile_abs_0,
-                                            win_size=ΔF_win,
-                                            mode='dF/F0')
-            ylab = 'ΔF/F0'
+                                           **baseline_params)
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
         # lab 1
@@ -1104,13 +1051,11 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                 ylab = 'a.u.'
             elif values_mode == 'ΔF':
                 selected_profile_1 = fun_delta(profile_abs_1,
-                                                win_size=ΔF_win,
-                                                mode='dF')
+                                               **baseline_params)
                 ylab = 'ΔF'
             elif values_mode == 'ΔF/F0':
                 selected_profile_1 = fun_delta(profile_abs_1,
-                                                win_size=ΔF_win,
-                                                mode='dF/F0')
+                                               **baseline_params)
                 ylab = 'ΔF/F0'
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
@@ -1124,13 +1069,11 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                 ylab = 'a.u.'
             elif values_mode == 'ΔF':
                 selected_profile_2 = fun_delta(profile_abs_2,
-                                                win_size=ΔF_win,
-                                                mode='dF')
+                                               **baseline_params)
                 ylab = 'ΔF'
             elif values_mode == 'ΔF/F0':
                 selected_profile_2 = fun_delta(profile_abs_2,
-                                                win_size=ΔF_win,
-                                                mode='dF/F0')
+                                               **baseline_params)
                 ylab = 'ΔF/F0'
             arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
         end = time.perf_counter()

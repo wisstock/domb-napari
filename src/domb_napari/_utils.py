@@ -257,8 +257,8 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
     return np.asarray(prof_arr)
 
 
-def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=10, mode:str='dF'):
-    """ Computes the baseline of each profile in the input array using a moving median estimation.
+def delta_prof_pybase(prof_arr: np.ndarray, lambd:float=10e4, mode:str='dF', **kwargs):
+    """ Computes the baseline of each profile in the input array using a Asymmetric Least Squares.
     
     Parameters
     ----------
@@ -282,16 +282,16 @@ def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=10, mode:str='dF'):
     output_arr = []
     for prof in prof_arr:
         baseline_fit = Baseline(x_data = range(len(prof)))
-        prof_baseline,_ = baseline_fit.noise_median(prof, half_window=win_size)
-        if mode == 'dF/F0':
+        prof_baseline,_ = baseline_fit.fabc(prof, lam=lambd)
+        if mode == 'ΔF/F0':
             output_prof = (prof - prof_baseline) / prof_baseline
-        elif mode == 'dF':
+        elif mode == 'ΔF':
             output_prof = prof - prof_baseline
         output_arr.append(output_prof)
     return np.asarray(output_arr)
 
 
-def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='dF'):
+def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='dF', **kwargs):
     """ Computes the baseline of each profile in the input array using a baseline estimation by the begingng of the profiles.
     Parameters
     ----------
@@ -315,9 +315,64 @@ def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='dF'):
     output_arr = []
     for prof in prof_arr:
         F0 = np.mean(prof[:win_size])
-        if mode == 'dF/F0':
+        if mode == 'ΔF/F0':
             output_prof = (prof - F0) / F0
-        elif mode == 'dF':
+        elif mode == 'ΔF':
             output_prof = prof - F0
         output_arr.append(output_prof)
     return np.asarray(output_arr)
+
+
+# @magic_factory(call_button='Align stack')
+# def dw_registration_old(viewer: Viewer, offset_img:Image, reference_img:Image,
+#                     use_reference_img:bool=False,
+#                     ch_ref:int=3,
+#                     ch_offset:int=0,
+#                     input_crop:int=30, output_crop:int=20):
+#     if input is not None:
+#         if offset_img.data.ndim == 4:
+
+#             def _save_aligned(img):
+#                 xform_name = offset_img.name+'_xform'
+#                 try: 
+#                     viewer.layers[xform_name].data = img
+#                     viewer.layers[xform_name].colormap = 'turbo'
+#                 except KeyError:
+#                     viewer.add_image(img, name=xform_name, colormap='turbo')
+
+#             @thread_worker(connect={'yielded':_save_aligned})
+#             def _dw_registration():
+#                 offset_series = offset_img.data
+#                 master_img = reference_img.data
+
+#                 if input_crop != 0:
+#                     y, x = offset_series.shape[-2:]
+#                     offset_series = offset_series[:,:,input_crop:y-input_crop,input_crop:x-input_crop]
+#                     master_img = master_img[:,input_crop:y-input_crop,input_crop:x-input_crop]
+
+#                 if use_reference_img:
+#                     master_img_ref, master_img_offset = master_img[1], master_img[0]
+#                 else:
+#                     master_img_ref = np.mean(offset_series[:,ch_ref,:,:], axis=0)
+#                     master_img_offset = np.mean(offset_series[:,ch_offset,:,:], axis=0)
+
+#                 affreg = AffineRegistration()
+#                 transform = AffineTransform2D()
+#                 affine = affreg.optimize(master_img_ref, master_img_offset,
+#                                         transform, params0=None)
+
+#                 ch0_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,0,:,:]])
+#                 ch2_xform = np.asarray([affine.transform(frame) for frame in offset_series[:,2,:,:]])
+#                 xform_series = np.stack((ch0_xform,
+#                                          offset_series[:,1,:,:],
+#                                          ch2_xform,
+#                                          offset_series[:,3,:,:]),
+#                                         axis=1)
+#                 if output_crop != 0:
+#                     yo, xo = xform_series.shape[-2:]
+#                     xform_series = xform_series[:,:,output_crop:yo-output_crop,output_crop:xo-output_crop]
+#                 yield xform_series.astype(offset_series.dtype)
+                    
+#             _dw_registration()
+#         else:
+#             raise ValueError('Incorrect input image shape!')
