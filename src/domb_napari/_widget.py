@@ -789,20 +789,28 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         values_mode='ΔF/F0',
                         use_simple_baseline:bool=True,
                         ΔF_win:int=4,
-                        profiles_crop:bool=False,
-                        profiles_range:list=[0,10]):
+                        Dietrich_std:float=1.25):
     if input is not None:
         input_img = img.data
         input_labels = labels.data
-        df_name = img.name + '_' + labels.name
-        df_name = df_name.replace('_xform','')
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
+        baseline_params = {'win_size': ΔF_win, 
+                           'mode': values_mode,
+                           'stds': Dietrich_std}  # for pybaselines
+
         if use_simple_baseline:
             fun_delta = utils.delta_prof_simple
+            show_info(f'{img.name}: simple baseline estimation, win size={baseline_params["win_size"]}')
         else:
             fun_delta = utils.delta_prof_pybase
+            show_info(f'{img.name}: Dietrich baseline estimation, std={baseline_params["stds"]}, win size={baseline_params["win_size"]}')
+
+        y_lab_dict = {'abs.': 'a.u.',
+                      'ΔF': 'ΔF',
+                      'ΔF/F0': 'ΔF/F0'}
+        ylab = y_lab_dict[values_mode]
 
         start = time.perf_counter()
         profile_abs = utils.labels_to_profiles(input_label=input_labels,
@@ -811,32 +819,23 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         profile_to_plot = []
         if values_mode == 'abs.':
             profile_to_plot = np.round(profile_abs, decimals=4)
-            ylab = 'a.u.'
-            df_name = df_name + '_abs'
-        elif values_mode == 'ΔF':
+        else:
             profile_to_plot = fun_delta(profile_abs,
-                                        win_size=ΔF_win,
-                                        mode='dF')
-            ylab = 'ΔF'
-            df_name = df_name + '_ΔF'
-        elif values_mode == 'ΔF/F0':
-            profile_to_plot = fun_delta(profile_abs,
-                                        win_size=ΔF_win,
-                                        mode='dF/F0')
-            ylab = 'ΔF/F0'
-            df_name = df_name + '_ΔF/F0'
+                                        **baseline_params)
         end = time.perf_counter()
         show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
 
         # plotting
-        if profiles_crop:
-            profile_to_plot = profile_to_plot[:,profiles_range[0]:profiles_range[1]]
-            time_line = time_line[profiles_range[0]:profiles_range[1]]
+        # if profiles_range:
+        #     profile_to_plot = profile_to_plot[:,profiles_range[0]:profiles_range[1]]
+        #     time_line = time_line[profiles_range[0]:profiles_range[1]]
 
         lab_colors = labels.get_color([prop['label'] for prop in measure.regionprops(label_image=input_labels)])
 
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
+        if values_mode == 'ΔF/F0' or values_mode == 'ΔF':
+            ax.axhline(y=0.0, color='k', linestyle='--')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         for num_ROI, color in enumerate(lab_colors):
@@ -861,6 +860,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                               values_mode:str='ΔF/F0',
                               use_simple_baseline:bool=True,
                               ΔF_win:int=4,
+                              Dietrich_std:float=1.25,
                               stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -877,10 +877,21 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
 
+        baseline_params = {'win_size': ΔF_win, 
+                           'mode': values_mode,
+                           'stds': Dietrich_std}  # for pybaselines
+
         if use_simple_baseline:
             fun_delta = utils.delta_prof_simple
+            show_info(f'{lab.name}: simple baseline estimation, win size={baseline_params["win_size"]}')
         else:
             fun_delta = utils.delta_prof_pybase
+            show_info(f'{lab.name}: Dietrich baseline estimation, std={baseline_params["stds"]}, win size={baseline_params["win_size"]}')
+
+        y_lab_dict = {'abs.': 'a.u.',
+                      'ΔF': 'ΔF',
+                      'ΔF/F0': 'ΔF/F0'}
+        ylab = y_lab_dict[values_mode]
 
         # processing
         input_labels = lab.data
@@ -891,20 +902,12 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
         time_line_0 = np.linspace(0, (input_img_0.shape[0]-1)*time_scale, \
                                   num=input_img_0.shape[0])
         profile_abs_0 = utils.labels_to_profiles(input_label=input_labels,
-                                           input_img=input_img_0)
+                                                 input_img=input_img_0)
         if values_mode == 'abs.':
             selected_profile_0 = np.round(profile_abs_0, decimals=4)
-            ylab = 'a.u.'
-        elif values_mode == 'ΔF':
+        else:
             selected_profile_0 = fun_delta(profile_abs_0,
-                                            win_size=ΔF_win,
-                                            mode='dF')
-            ylab = 'ΔF'
-        elif values_mode == 'ΔF/F0':
-            selected_profile_0 = fun_delta(profile_abs_0,
-                                            win_size=ΔF_win,
-                                            mode='dF/F0')
-            ylab = 'ΔF/F0'
+                                           **baseline_params)
         arr_val_0, arr_var_0 = stat_dict[stat_method](selected_profile_0)
 
         # img 1
@@ -913,20 +916,12 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
             time_line_1 = np.linspace(0, (input_img_1.shape[0]-1)*time_scale, \
                                     num=input_img_1.shape[0])
             profile_abs_1 = utils.labels_to_profiles(input_label=input_labels,
-                                            input_img=input_img_1)
+                                                     input_img=input_img_1)
             if values_mode == 'abs.':
                 selected_profile_1 = np.round(profile_abs_1, decimals=4)
-                ylab = 'Intensity, a.u.'
-            elif values_mode == 'ΔF':
+            else:
                 selected_profile_1 = fun_delta(profile_abs_1,
-                                                        win_size=ΔF_win,
-                                                        mode='dF')
-                ylab = 'ΔF'
-            elif values_mode == 'ΔF/F0':
-                selected_profile_1 = fun_delta(profile_abs_1,
-                                                win_size=ΔF_win,
-                                                mode='dF/F0')
-                ylab = 'ΔF/F0'
+                                                **baseline_params)
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
         # img 2
@@ -935,20 +930,12 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
             time_line_2 = np.linspace(0, (input_img_2.shape[0]-1)*time_scale, \
                                     num=input_img_2.shape[0])
             profile_abs_2 = utils.labels_to_profiles(input_label=input_labels,
-                                            input_img=input_img_2)
+                                                     input_img=input_img_2)
             if values_mode == 'abs.':
                 selected_profile_2 = np.round(profile_abs_2, decimals=4)
-                ylab = 'a.u.'
-            elif values_mode == 'ΔF':
+            else:
                 selected_profile_2 = fun_delta(profile_abs_2,
-                                                win_size=ΔF_win,
-                                                mode='dF')
-                ylab = 'ΔF'
-            elif values_mode == 'ΔF/F0':
-                selected_profile_2 = fun_delta(profile_abs_2,
-                                                win_size=ΔF_win,
-                                                mode='dF/F0')
-                ylab = 'ΔF/F0'
+                                                **baseline_params)
             arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
         end = time.perf_counter()
         show_info(f'Profiles calculated in {end-start:.2f} s')
@@ -956,6 +943,8 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
         # plotting
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
+        if values_mode == 'ΔF/F0' or values_mode == 'ΔF':
+            ax.axhline(y=0.0, color='k', linestyle='--')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
@@ -995,6 +984,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         values_mode:str='ΔF/F0',
                         use_simple_baseline:bool=True,
                         ΔF_win:int=4,
+                        Dietrich_std:float=1.25,
                         stat_method:str='se'):
     if input is not None:
         # mean, se
@@ -1010,14 +1000,17 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         stat_dict = {'se':arr_se_stat,
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
-        
-        if use_simple_baseline:
-            fun_delta = utils.delta_prof_simple
-        else:
-            fun_delta = utils.delta_prof_pybase
 
         baseline_params = {'win_size': ΔF_win, 
-                           'mode': values_mode} 
+                           'mode': values_mode,
+                           'stds': Dietrich_std}  # for pybaselines
+
+        if use_simple_baseline:
+            fun_delta = utils.delta_prof_simple
+            show_info(f'{img.name}: simple baseline estimation, win size={baseline_params["win_size"]}')
+        else:
+            fun_delta = utils.delta_prof_pybase
+            show_info(f'{img.name}: Dietrich baseline estimation, std={baseline_params["stds"]}, win size={baseline_params["win_size"]}')
 
         y_lab_dict = {'abs.': 'a.u.',
                       'ΔF': 'ΔF',
@@ -1033,7 +1026,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         # lab 0
         input_lab_0 = lab_0.data
         profile_abs_0 = utils.labels_to_profiles(input_label=input_lab_0,
-                                           input_img=input_img)
+                                                 input_img=input_img)
         if values_mode == 'abs.':
             selected_profile_0 = np.round(profile_abs_0, decimals=4)
         else:
@@ -1048,15 +1041,9 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                                             input_img=input_img)
             if values_mode == 'abs.':
                 selected_profile_1 = np.round(profile_abs_1, decimals=4)
-                ylab = 'a.u.'
-            elif values_mode == 'ΔF':
+            else:
                 selected_profile_1 = fun_delta(profile_abs_1,
                                                **baseline_params)
-                ylab = 'ΔF'
-            elif values_mode == 'ΔF/F0':
-                selected_profile_1 = fun_delta(profile_abs_1,
-                                               **baseline_params)
-                ylab = 'ΔF/F0'
             arr_val_1, arr_var_1 = stat_dict[stat_method](selected_profile_1)
 
         # lab 2
@@ -1066,15 +1053,9 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                                             input_img=input_img)
             if values_mode == 'abs.':
                 selected_profile_2 = np.round(profile_abs_2, decimals=4)
-                ylab = 'a.u.'
-            elif values_mode == 'ΔF':
+            else:
                 selected_profile_2 = fun_delta(profile_abs_2,
                                                **baseline_params)
-                ylab = 'ΔF'
-            elif values_mode == 'ΔF/F0':
-                selected_profile_2 = fun_delta(profile_abs_2,
-                                               **baseline_params)
-                ylab = 'ΔF/F0'
             arr_val_2, arr_var_2 = stat_dict[stat_method](selected_profile_2)
         end = time.perf_counter()
         show_info(f'Profiles calculated in {end-start:.2f} s')
@@ -1082,6 +1063,8 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         # plotting        
         mpl_fig = plt.figure()
         ax = mpl_fig.add_subplot(111)
+        if values_mode == 'ΔF/F0' or values_mode == 'ΔF':
+            ax.axhline(y=0.0, color='k', linestyle='--')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
@@ -1115,8 +1098,9 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                saving_path={'mode': 'd'})
 def save_df(img:Image, labels:Labels,
             time_scale:float=1.0,
-            ΔF_win:int=15,
-            use_simple_baseline:bool=False,
+            ΔF_win:int=4,
+            Dietrich_win:int=4,
+            Dietrich_std:float=1.25,
             save_ROIs_distances:bool=False,
             custom_stim_position:bool=False,
             stim_position:Points=None,
@@ -1130,7 +1114,7 @@ def save_df(img:Image, labels:Labels,
                                 num=input_img.shape[0])
 
         if save_ROIs_distances:
-            col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int']
+            col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
             tip_position_img = np.ones_like(input_img[0], dtype=bool)
             if custom_stim_position:
                 try:
@@ -1148,30 +1132,34 @@ def save_df(img:Image, labels:Labels,
             for label_num in np.unique(input_labels)[1:]:
                 region_mask = input_labels == label_num
                 distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
-            show_info(f'{img.name}: center position {tip_x, tip_y}')
+            show_info(f'{img.name}: stim position {tip_x, tip_y}')
         else:
-            col_list = ['id', 'lab_id', 'roi', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int']
-
-        if use_simple_baseline:
-            fun_delta = utils.delta_prof_simple
-        else:
-            fun_delta = utils.delta_prof_pybase
+            col_list = ['id', 'lab_id', 'roi', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
 
         start = time.perf_counter()
-        profile_raw = utils.labels_to_profiles(input_label=input_labels,
+        # simple baseline calc
+        profile_abs = utils.labels_to_profiles(input_label=input_labels,
                                                input_img=input_img)
-        profile_abs = np.round(profile_raw, decimals=4)
-        profile_dF = fun_delta(profile_raw, win_size=ΔF_win, mode='dF')
-        profile_dF_F0 = fun_delta(profile_raw, win_size=ΔF_win, mode='dF/F0')
-
+        profile_dF = utils.delta_prof_simple(profile_abs, mode='ΔF',
+                                             win_size=ΔF_win)
+        profile_dF_F0 = utils.delta_prof_simple(profile_abs, mode='ΔF/F0',
+                                                win_size=ΔF_win)
+        # Dietrich baseline calc
+        profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs',
+                                                  win_size=Dietrich_win, stds=Dietrich_std)
+        profile_dF_base = utils.delta_prof_pybase(profile_abs, mode='ΔF',
+                                                  win_size=Dietrich_win, stds=Dietrich_std)
+        profile_dF_F0_base = utils.delta_prof_pybase(profile_abs, mode='ΔF/F0',
+                                                     win_size=Dietrich_win, stds=Dietrich_std)
         end = time.perf_counter()
         show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
 
         output_df = pd.DataFrame(columns=col_list)
+        # simple baseline saving
         for num_ROI in range(profile_abs.shape[0]):
-            ROI_abs = profile_abs[num_ROI]
-            ROI_dF = profile_dF[num_ROI]
-            ROI_dF_F0 = profile_dF_F0[num_ROI]
+            ROI_abs = np.round(profile_abs[num_ROI], decimals=4)
+            ROI_dF = np.round(profile_dF[num_ROI], decimals=4)
+            ROI_dF_F0 = np.round(profile_dF_F0[num_ROI], decimals=4)
             dict_ROI = {'id':img.name,
                         'lab_id':labels.name,
                         'roi':num_ROI+1,
@@ -1179,7 +1167,28 @@ def save_df(img:Image, labels:Labels,
                         'time':time_line,
                         'abs_int':ROI_abs,
                         'dF_int':ROI_dF,
-                        'dF/F0_int':ROI_dF_F0}
+                        'dF/F0_int':ROI_dF_F0,
+                        'base':'simple'}
+            if save_ROIs_distances:
+                dict_ROI['dist'] = distance_list[num_ROI]
+            df_ROI = pd.DataFrame(dict_ROI)
+            output_df = pd.concat([output_df.astype(df_ROI.dtypes),
+                                    df_ROI.astype(output_df.dtypes)],
+                                    ignore_index=True)
+        # Dietrich baseline saving
+        for num_ROI in range(profile_abs.shape[0]):
+            ROI_abs = np.round(profile_abs_base[num_ROI], decimals=4)
+            ROI_dF = np.round(profile_dF_base[num_ROI], decimals=4)
+            ROI_dF_F0 = np.round(profile_dF_F0_base[num_ROI], decimals=4)
+            dict_ROI = {'id':img.name,
+                        'lab_id':labels.name,
+                        'roi':num_ROI+1,
+                        'index': np.linspace(0, input_img.shape[0], num=input_img.shape[0], dtype=int),
+                        'time':time_line,
+                        'abs_int':ROI_abs,
+                        'dF_int':ROI_dF,
+                        'dF/F0_int':ROI_dF_F0,
+                        'base':'dietrich'}
             if save_ROIs_distances:
                 dict_ROI['dist'] = distance_list[num_ROI]
             df_ROI = pd.DataFrame(dict_ROI)

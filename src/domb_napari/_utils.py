@@ -257,15 +257,19 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
     return np.asarray(prof_arr)
 
 
-def delta_prof_pybase(prof_arr: np.ndarray, lambd:float=10e4, mode:str='dF', **kwargs):
-    """ Computes the baseline of each profile in the input array using a Asymmetric Least Squares.
-    
+def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
+                      mode:str='ΔF', **kwargs):
+    """ Computes the baseline of each profile in the input array using the Dietrich's method.
+    pybaselines docs: https://pybaselines.readthedocs.io/en/latest/generated/api/pybaselines.Baseline.dietrich.html#pybaselines.Baseline.dietrich
+
     Parameters
     ----------
     prof_arr : np.ndarray
         A 2D array where each row corresponds to a profile (e.g., fluorescence intensity over time).
     win_size : int, optional
-        The size of the moving window used for baseline estimation.
+        The half window to use for smoothing the input data with a moving average.
+    stds : float, optional
+        The number of standard deviations to include when thresholding.
     mode : str, optional
         The mode of output profile calculation. Options are 'dF/F0' (relative intensity changes), or 'dF' (absolute intensity changes).
    
@@ -282,16 +286,20 @@ def delta_prof_pybase(prof_arr: np.ndarray, lambd:float=10e4, mode:str='dF', **k
     output_arr = []
     for prof in prof_arr:
         baseline_fit = Baseline(x_data = range(len(prof)))
-        prof_baseline,_ = baseline_fit.fabc(prof, lam=lambd)
+        prof_baseline,_ = baseline_fit.dietrich(prof,
+                                                smooth_half_window=win_size,
+                                                num_std=stds)
         if mode == 'ΔF/F0':
             output_prof = (prof - prof_baseline) / prof_baseline
         elif mode == 'ΔF':
             output_prof = prof - prof_baseline
+        elif mode == 'abs':
+            output_prof = prof
         output_arr.append(output_prof)
     return np.asarray(output_arr)
 
 
-def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='dF', **kwargs):
+def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='ΔF', **kwargs):
     """ Computes the baseline of each profile in the input array using a baseline estimation by the begingng of the profiles.
     Parameters
     ----------
