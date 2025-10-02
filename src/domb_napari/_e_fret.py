@@ -53,7 +53,7 @@ class Eapp():
             image time series with acceptor excitation-donor emission
             (e.g. 505 nm - CFP ch.)
         AA_img: ndarray [t,x,y]
-            image time series with acceptor excitation-acceptor emission\
+            image time series with acceptor excitation-acceptor emission
             (e.g. 505 nm - YFP ch.)
         a: float
             acceptor bleedthrough coefficient (I_DA(A) / I_AA(A))

@@ -43,7 +43,7 @@ def split_channels(viewer: Viewer, img:Image,
                    median_filter:bool=False, median_kernel:int=2,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
-                   use_correction_mask:bool=True,
+                   use_correction_mask:bool=False,
                    correction_mask:Labels=None,
                    correction_method:str='exp',
                    drop_frames:bool=False,
@@ -85,10 +85,10 @@ def split_channels(viewer: Viewer, img:Image,
                                                               method=correction_method)
                     show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
                 if frames_crop != 0:
-                    yo, xo = ch_img.shape[-1:]
+                    yo, xo = ch_img.shape[1:]
                     ch_img = ch_img[:,frames_crop:yo-frames_crop,frames_crop:xo-frames_crop]
                 end = time.perf_counter()
-                show_info(f'{ch_suffix} preprocessing time: {end - start:.2f} s')
+                show_info(f'{ch_suffix} preprocessing time: {end - start:.2f} s, shape {ch_img.shape}, data type {ch_img.dtype}')
                 return (ch_img, img.name+ch_suffix)
 
             show_info(f'{img.name}: preprocessing started, data type {img.data.dtype}, shape {img.data.shape}')
@@ -99,13 +99,13 @@ def split_channels(viewer: Viewer, img:Image,
                 elif stack_order == 'CTXY':  # for confocal data
                     input_img = np.moveaxis(img.data,0,1)
                 for i in range(0,img.data.shape[1]):
-                    show_info(f'{img.name}: Ch. {i} preprocessing')
+                    show_info(f'{img.name}: Ch. {i} preprocessing started')
                     yield _preprocessing(ch_img=input_img[:,i,:,:], ch_suffix=f'_ch{i}')
             elif img.data.ndim == 3:
                 show_info(f'{img.name}: image already has 3 dimensions, preprocessing only mode')
-                yield _preprocessing(ch_img=img.data, ch_suffix='_ch0')
+                yield _preprocessing(ch_img=img.data, ch_suffix='')
             else:
-                raise ValueError('Input image should have 3 or 4 dimensions!')       
+                raise ValueError('Input image has to have 3 or 4 dimensions!')       
         
         _split_channels()
 
@@ -388,10 +388,12 @@ def g_calc(viewer: Viewer,
                     viewer.layers[f"{pre_AA_img.name}_Fc_pre"].data = output[1]
                 except KeyError:
                     viewer.add_image(output[1], name=f"{pre_AA_img.name}_Fc_pre", colormap='turbo')
+
                 try: 
                     viewer.layers[f"{pre_AA_img.name}_Fc_post"].data = output[2]
                 except KeyError:
                     viewer.add_image(output[2], name=f"{pre_AA_img.name}_Fc_post", colormap='turbo')
+
                 try: 
                     viewer.layers[f"{pre_AA_img.name}_G"].data = output[3]
                 except KeyError:
@@ -400,54 +402,57 @@ def g_calc(viewer: Viewer,
         @thread_worker(connect={'yielded':_save_g_data})
         def _g_calc():
             def __Fc_img(dd_img, da_img, aa_img, a, d):
-                Fc_img = []
-                for frame_num in range(dd_img.shape[0]):
-                    DD_frame = dd_img[frame_num]
-                    DA_frame = da_img[frame_num]
-                    AA_frame = aa_img[frame_num]
-
-                    Fc_frame = DA_frame - a*AA_frame - d*DD_frame
-                    Fc_frame[Fc_frame < 0] = 0
-                    Fc_img.append(Fc_frame)
-
-                return np.asarray(Fc_img, dtype=dd_img.dtype)
+                Fc_img = da_img - aa_img*a - dd_img*d
+                return Fc_img.clip(min=0)
             
-            def __G_img(Fc_pre_img, Fc_post_img, dd_pre_img, dd_post_img, mask):
-                G_img = []
-                for frame_num in range(Fc_pre_img.shape[0]):
-                    Fc_pre_frame = Fc_pre_img[frame_num]
-                    Fc_post_frame = Fc_post_img[frame_num]
-                    DD_pre_frame = dd_pre_img[frame_num]
-                    DD_post_frame = dd_post_img[frame_num]
+            # def __G_img(Fc_pre_img, Fc_post_img, dd_pre_img, dd_post_img, mask):
+            #     mask_arr = np.tile(mask, (Fc_post_img.shape[0],1,1))
 
-                    G_frame = (Fc_pre_frame - Fc_post_frame) / (DD_post_frame - DD_pre_frame)
-                    G_frame[~mask] = 0
-                    G_img.append(G_frame)
-                
-                return np.asarray(G_img)
+            #     DD_delta_img = dd_post_img - dd_pre_img
+            #     DD_delta_img[DD_delta_img < 0] = 10e-6  # to avoid zero division
+            #     DD_delta_img[~mask_arr] = 0
+
+            #     Fc_delta_img = Fc_pre_img - Fc_post_img
+            #     Fc_delta_img[~mask_arr] = 0
+
+            #     G_img = Fc_delta_img / DD_delta_img
+            #     return G_img.clip(min=0)
 
             output_name = pre_AA_img.name.replace('_ch3','')
             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
             g_df = pd.DataFrame(columns=col_list)
 
-            Fc_img_pre = __Fc_img(dd_img=pre_DD_img.data,
-                                  da_img=pre_DA_img.data,
-                                  aa_img=pre_AA_img.data,
+            Fc_img_pre = __Fc_img(dd_img=pre_DD_img.data.astype(np.float32),
+                                  da_img=pre_DA_img.data.astype(np.float32),
+                                  aa_img=pre_AA_img.data.astype(np.float32),
                                   a=a, d=d)
-            Fc_img_post = __Fc_img(dd_img=post_DD_img.data,
-                                   da_img=post_DA_img.data,
-                                   aa_img=post_AA_img.data,
+            Fc_img_post = __Fc_img(dd_img=post_DD_img.data.astype(np.float32),
+                                   da_img=post_DA_img.data.astype(np.float32),
+                                   aa_img=post_AA_img.data.astype(np.float32),
                                    a=a, d=d)
             img_mask = mask.data != 0
 
-            DD_img_delta = np.array([f - pre_DD_img.data[frame_for_estimation] for f in post_DD_img.data]).clip(min=0).astype(dtype=pre_DD_img.data.dtype)
-            Fc_img_delta = np.array([Fc_img_pre[frame_for_estimation] - f for f in Fc_img_post]).clip(min=0).astype(dtype=pre_DD_img.data.dtype)
+            # DD_img_delta = post_DD_img.data - pre_DD_img.data[frame_for_estimation]
+            # DD_img_delta.clip(min=0)
+            # Fc_img_delta = np.array([Fc_img_pre[frame_for_estimation] - f for f in Fc_img_post]).clip(min=0)
 
-            for i in range(len(DD_img_delta)):
-                arr_dd_dlta = ma.masked_array(DD_img_delta[i], mask=~img_mask).compressed()
-                arr_fc_delta = ma.masked_array(Fc_img_delta[i], mask=~img_mask).compressed()
+            # mask_arr = np.tile(img_mask, (Fc_img_post.shape[0],1,1))
 
-                g_fit = stats.linregress(arr_dd_dlta, arr_fc_delta, alternative='greater')
+            DD_delta_img = post_DD_img.data.astype(np.float32) - pre_DD_img.data[frame_for_estimation].astype(np.float32)
+            DD_delta_img[DD_delta_img < 0] = 10e-8  # to avoid zero division
+            # DD_delta_img[~mask_arr] = 10e-8  # background level to avoid zero division
+
+            Fc_delta_img = Fc_img_pre[frame_for_estimation] - Fc_img_post
+
+            i = 0
+            for DD_delta_frame, Fc_delta_frame in zip(DD_delta_img, Fc_delta_img):
+                arr_dd_delta = ma.masked_array(DD_delta_frame, mask=~img_mask).compressed()
+                arr_fc_delta = ma.masked_array(Fc_delta_frame, mask=~img_mask).compressed()
+
+                delta_zeros = np.array([any(t) for t in zip(arr_dd_delta<=0, arr_fc_delta<=0)], dtype=np.bool_)
+                arr_dd_delta, arr_fc_delta = arr_dd_delta[~delta_zeros], arr_fc_delta[~delta_zeros]
+
+                g_fit = stats.linregress(x=arr_dd_delta, y=arr_fc_delta)
 
                 row_dict =  {'id': output_name,
                              'frame_n': i,
@@ -461,16 +466,18 @@ def g_calc(viewer: Viewer,
                 g_df = pd.concat([g_df.astype(row_df.dtypes),
                                     row_df.astype(g_df.dtypes)],
                                     ignore_index=True)
+                i += 1
 
             show_info(f'{output_name}: G-factor saved')
             if save_Fc_and_G_img:
-                g_img = __G_img(Fc_pre_img=Fc_img_pre,
-                                Fc_post_img=Fc_img_post,
-                                dd_pre_img=pre_DD_img.data,
-                                dd_post_img=post_DD_img.data,
-                                mask=img_mask)
+                G_img = np.array(Fc_delta_img / DD_delta_img).clip(min=0)
+                # g_img = __G_img(Fc_pre_img=Fc_img_pre[frame_for_estimation],
+                #                 Fc_post_img=Fc_img_post,
+                #                 dd_pre_img=pre_DD_img.data[frame_for_estimation],
+                #                 dd_post_img=post_DD_img.data,
+                #                 mask=img_mask)
                 
-                yield (g_df, Fc_img_pre, Fc_img_post, g_img)
+                yield (g_df, Fc_img_pre, Fc_img_post, G_img)
             else:
                 yield (g_df)
 
