@@ -117,6 +117,8 @@ def split_channels(viewer: Viewer, img:Image,
 def dw_registration(viewer: Viewer, offset_img:Image,
                     input_crop:int=30, output_crop:int=30,
                     align_method:str='internal',  # reference_img:Image=None,
+                    manual_channels:bool=False,  # ch0:int=0, ch1:int=1,
+                    ref_off_ch:list=[0,1],  # for manual_channels=True
                     load_matrix:pathlib.Path = None,
                     save_matrix:bool=False,
                     saving_path:pathlib.Path = os.getcwd()):
@@ -144,7 +146,11 @@ def dw_registration(viewer: Viewer, offset_img:Image,
                     affreg = AffineRegistration()
                     transform = AffineTransform2D()
 
-                    if input_data.shape[1] == 2:  # 1 ext with DV
+                    if manual_channels:  # manual channel selection
+                        show_info(f'{offset_img.name}: move ch. {ref_off_ch[1]} to ch.{ref_off_ch[0]}')
+                        ref_frame = np.mean(input_data[:,ref_off_ch[0],:,:], axis=0)
+                        move_frame = np.mean(input_data[:,ref_off_ch[1],:,:], axis=0)
+                    elif input_data.shape[1] == 2:  # 1 ext with DV
                         show_info(f'{offset_img.name}: 2 spectral ch.')
                         ref_frame = np.mean(input_data[:,1,:,:], axis=0)
                         move_frame = np.mean(input_data[:,0,:,:], axis=0)
@@ -288,7 +294,7 @@ def split_sep(viewer: Viewer, img:Image,
 @magic_factory(call_button='Estimate crosstalk',
                presented_fluorophore={"choices": ['A', 'D']},
                saving_path={'mode': 'd'})
-def cross_calc(DD_img:Image, DA_img:Image, AA_img:Image, AD_img:Image,
+def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:Image,
                mask: Labels,
                presented_fluorophore:str='A',
                saving_path:pathlib.Path = os.getcwd()):
@@ -296,18 +302,53 @@ def cross_calc(DD_img:Image, DA_img:Image, AA_img:Image, AD_img:Image,
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3, AD_img.data.ndim == 3]):
             raise ValueError('Incorrect input image shape!')
 
-        def _save_cross_data(output_df):
-            df_name = f"{AA_img.name}_{presented_fluorophore}_coef.csv"
-            output_df.to_csv(os.path.join(saving_path, df_name))
+        def _save_cross_data(input_coefs):
+            output_name = AA_img.name.replace('_ch3','')
+            output_df = input_coefs[0]
 
-        @thread_worker(connect={'yielded':_save_cross_data})
+            # data frame saving
+            df_name = f"{output_name}_{presented_fluorophore}_coef.csv"
+            output_df.to_csv(os.path.join(saving_path, df_name))
+            show_info(f'{df_name}: {presented_fluorophore} coeficients saved')
+                
+            # pixel values for last frame
+            x_arr = input_coefs[1]
+            y_arr = input_coefs[2]
+
+            # regression line for lasta frame
+            last_slope = output_df.iloc[-1,2]
+            last_intercept = output_df.iloc[-1,5]
+            last_r2 = output_df.iloc[-1,7]
+            x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
+            y_line = last_slope*x_line + last_intercept
+
+            show_info(f'The last frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f} coeficients saved')
+
+            # last frame plot
+            axis_lab_dict = {'A':['AA, a.u.','DA, a.u.', 'a'],
+                             'D':['DD, a.u.','DA, a.u.', 'd']}
+
+            mpl_fig = plt.figure()
+            ax = mpl_fig.add_subplot(111)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.scatter(x_arr, y_arr, s=5, alpha=0.15, color='green')
+            ax.plot(x_line, y_line, color='red', linewidth=2)
+            ax.grid(color='grey', linewidth=.25)
+            ax.set_xlabel(axis_lab_dict[presented_fluorophore][0])
+            ax.set_ylabel(axis_lab_dict[presented_fluorophore][1])
+            plt.title(f'{output_name}, esimation of {axis_lab_dict[presented_fluorophore][2]}')
+            viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Cross-talk estimation')
+
+        @thread_worker(connect={'returned':_save_cross_data})
         def _cross_calc():
             output_name = AA_img.name.replace('_ch3','')
 
             input_labels = mask.data
             input_mask = input_labels != 0
             
-            def c_calc(img_ref, img_prm, img_off, img_mask, c_prm_name, c_off_name, img_name):
+            def c_calc(img_ref, img_prm, img_off, img_mask,
+                       c_prm_name, c_off_name, img_name):
                 col_list = ['id', 'frame_n',
                             c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
                             c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
@@ -339,27 +380,25 @@ def cross_calc(DD_img:Image, DA_img:Image, AA_img:Image, AD_img:Image,
                     c_df = pd.concat([c_df.astype(row_df.dtypes),
                                         row_df.astype(c_df.dtypes)],
                                         ignore_index=True)
-                return c_df
+                return (c_df,arr_ref,arr_prm)
 
             if presented_fluorophore == 'A':
-                coef_df = c_calc(img_ref = AA_img.data,
-                                    img_prm = DA_img.data,
-                                    img_off = DD_img.data,
-                                    img_mask = input_mask,
-                                    c_prm_name = 'a',
-                                    c_off_name = 'b',
-                                    img_name = output_name)
+                coefs = c_calc(img_ref = AA_img.data,
+                               img_prm = DA_img.data,
+                               img_off = DD_img.data,
+                               img_mask = input_mask,
+                               c_prm_name = 'a',
+                               c_off_name = 'b',
+                               img_name = output_name)
             if presented_fluorophore == 'D':
-                coef_df = c_calc(img_ref = DD_img.data,
-                                    img_prm = DA_img.data,
-                                    img_off = AA_img.data,
-                                    img_mask = input_mask,
-                                    c_prm_name = 'd',
-                                    c_off_name = 'c',
-                                    img_name = output_name)
-            
-            show_info(f'{output_name}: {presented_fluorophore} coeficients saved')
-            yield coef_df
+                coefs = c_calc(img_ref = DD_img.data,
+                               img_prm = DA_img.data,
+                               img_off = AA_img.data,
+                               img_mask = input_mask,
+                               c_prm_name = 'd',
+                               c_off_name = 'c',
+                               img_name = output_name)
+            return coefs
 
         _cross_calc()
 
