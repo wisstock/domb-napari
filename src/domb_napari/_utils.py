@@ -7,6 +7,8 @@ from numpy import ma
 from numba import jit, njit
 import pandas as pd
 
+from skimage import segmentation
+
 from scipy import ndimage as ndi
 from scipy import stats
 from scipy import signal
@@ -74,7 +76,7 @@ def delta_smooth_cmap():
     """ Symmetric colormap for visualizing fluorescence changes.
 
     """
-    return vispy.color.Colormap([[0.0, 0.2, 0.6],      # темно-синій
+    return vispy.color.Colormap([[0.0, 0.2, 0.6],     # темно-синій
                                 [0.0, 0.3, 0.7],      # синій
                                 [0.0, 0.4, 0.8],      # світло-синій
                                 [0.0, 0.5, 0.9],      # яскравий синій
@@ -190,6 +192,40 @@ def get_bright_channel(input_img:np.ndarray):
     return bright_idx
 
 
+def mask_segmentation(input_mask:np.ndarray, fragment_num:int=30):
+    """ Segmentation of the input binary mask by distance transform and watershed algorithm.
+
+    Parameters
+    ----------
+    input_mask: ndarray [x,y]
+        input binary mask
+    fragment_num: int
+        number of fragments to segment the mask
+
+    Returns
+    -------
+    output_mask: ndarray [x,y]
+        segmented mask with unique integer labels for each region
+
+    """
+    if input_mask.ndim != 2:
+        raise ValueError('Input mask must be 2D array!')
+
+    mask_coords = np.argwhere(input_mask)
+    np.random.seed(42)
+    rand_idx = np.random.choice(len(mask_coords), size=fragment_num, replace=False)
+    rand_coords = mask_coords[rand_idx]
+
+    markers_mask = np.zeros(input_mask.shape, dtype=bool)
+    markers_mask[tuple(rand_coords.T)] = True
+    markers = ndi.label(markers_mask)[0]
+
+    distance = ndi.distance_transform_edt(input_mask)
+    rois = segmentation.watershed(distance, markers, mask=input_mask, compactness=0.1)
+
+    return rois
+
+
 def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
     """ Compute pixel-wise delta image from the input image series.
     
@@ -244,17 +280,18 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
         containing the average pixel values for that region across all frames [lab, frame, time].
 
     """
+    input_img = input_img.astype(np.float64)
     prof_arr = []
     for label_num in np.unique(input_label)[1:]:
         region_idxs = np.where(input_label == label_num)
         region_prof = []
         for frame in input_img:
-            val = 0
+            val = np.float64(0)
             for i, j in zip(region_idxs[0], region_idxs[1]):
                 val += frame[i, j]
             region_prof.append(val / len(region_idxs[0]))
         prof_arr.append(region_prof)  
-    return np.asarray(prof_arr)
+    return np.asarray(prof_arr, dtype=np.float32)
 
 
 def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,

@@ -332,7 +332,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:
             ax = mpl_fig.add_subplot(111)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            ax.scatter(x_arr, y_arr, s=5, alpha=0.15, color='green')
+            ax.scatter(x_arr, y_arr, s=5, alpha=0.15, color='blue')
             ax.plot(x_line, y_line, color='red', linewidth=2)
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel(axis_lab_dict[presented_fluorophore][0])
@@ -410,8 +410,7 @@ def g_calc(viewer: Viewer,
            post_DD_img:Image, post_DA_img:Image, post_AA_img:Image,
            mask: Labels,
            a:float=0.1846, d:float=0.2646,  # a & d for TagBFP+mBaoJin
-           frame_for_estimation:int=0,
-           save_Fc_and_G_img:bool=True,
+           pre_frame_for_estimation:int=0,
            saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         if not np.all([post_DD_img.data.ndim == 3, post_DA_img.data.ndim == 3, post_AA_img.data.ndim == 3]):
@@ -420,42 +419,36 @@ def g_calc(viewer: Viewer,
             raise ValueError('Incorrect input pre-image shape!')
 
         def _save_g_data(output):
-            df_name = f"{pre_AA_img.name}_f{frame_for_estimation}_g_factor.csv"
+            output_name = pre_AA_img.name.replace('_ch3','')
+            df_name = f"{output_name}_f{pre_frame_for_estimation}_g_factor.csv"
             output[0].to_csv(os.path.join(saving_path, df_name))
-            if save_Fc_and_G_img:
-                try: 
-                    viewer.layers[f"{pre_AA_img.name}_Fc_pre"].data = output[1]
-                except KeyError:
-                    viewer.add_image(output[1], name=f"{pre_AA_img.name}_Fc_pre", colormap='turbo')
+            show_info(f'{df_name}: G-factor saved')
 
-                try: 
-                    viewer.layers[f"{pre_AA_img.name}_Fc_post"].data = output[2]
-                except KeyError:
-                    viewer.add_image(output[2], name=f"{pre_AA_img.name}_Fc_post", colormap='turbo')
+            lab_name = f"{output_name}_seg_labels"
+            try:
+                viewer.layers[lab_name].data = output[1]
+            except KeyError:
+                new_labels = viewer.add_labels(output[1], name=lab_name, opacity=0.5)
+                new_labels.contour = 0
 
-                try: 
-                    viewer.layers[f"{pre_AA_img.name}_G"].data = output[3]
-                except KeyError:
-                    viewer.add_image(output[3], name=f"{pre_AA_img.name}_G", colormap='turbo')
+            mpl_fig = plt.figure()
+            ax = mpl_fig.add_subplot(111)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.plot(output[0]['frame_n'], output[0]['g_val'], color='blue', linewidth=2)
+            ax.grid(color='grey', linewidth=.25)
+            ax.set_xlabel('Frame')
+            ax.set_ylabel('G-factor')
+            plt.title(f'{output_name}, esimation of G-factor')
+            viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
 
-        @thread_worker(connect={'yielded':_save_g_data})
+
+
+        @thread_worker(connect={'returned':_save_g_data})
         def _g_calc():
             def __Fc_img(dd_img, da_img, aa_img, a, d):
                 Fc_img = da_img - aa_img*a - dd_img*d
                 return Fc_img.clip(min=0)
-            
-            # def __G_img(Fc_pre_img, Fc_post_img, dd_pre_img, dd_post_img, mask):
-            #     mask_arr = np.tile(mask, (Fc_post_img.shape[0],1,1))
-
-            #     DD_delta_img = dd_post_img - dd_pre_img
-            #     DD_delta_img[DD_delta_img < 0] = 10e-6  # to avoid zero division
-            #     DD_delta_img[~mask_arr] = 0
-
-            #     Fc_delta_img = Fc_pre_img - Fc_post_img
-            #     Fc_delta_img[~mask_arr] = 0
-
-            #     G_img = Fc_delta_img / DD_delta_img
-            #     return G_img.clip(min=0)
 
             output_name = pre_AA_img.name.replace('_ch3','')
             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
@@ -470,29 +463,21 @@ def g_calc(viewer: Viewer,
                                    aa_img=post_AA_img.data.astype(np.float32),
                                    a=a, d=d)
             img_mask = mask.data != 0
+            roi_mask = utils.mask_segmentation(img_mask)
 
-            # DD_img_delta = post_DD_img.data - pre_DD_img.data[frame_for_estimation]
-            # DD_img_delta.clip(min=0)
-            # Fc_img_delta = np.array([Fc_img_pre[frame_for_estimation] - f for f in Fc_img_post]).clip(min=0)
+            pre_f_start, pre_frame_end = pre_frame_for_estimation, pre_frame_for_estimation+1
+            Fc_arr_pre = utils.labels_to_profiles(roi_mask, Fc_img_pre[pre_f_start:pre_frame_end])
+            Fc_arr_post = utils.labels_to_profiles(roi_mask, Fc_img_post)
 
-            # mask_arr = np.tile(img_mask, (Fc_img_post.shape[0],1,1))
+            DD_arr_pre = utils.labels_to_profiles(roi_mask, pre_DD_img.data[pre_f_start:pre_frame_end])
+            DD_arr_post = utils.labels_to_profiles(roi_mask, post_DD_img.data)
 
-            DD_delta_img = post_DD_img.data.astype(np.float32) - pre_DD_img.data[frame_for_estimation].astype(np.float32)
-            DD_delta_img[DD_delta_img < 0] = 10e-8  # to avoid zero division
-            # DD_delta_img[~mask_arr] = 10e-8  # background level to avoid zero division
-
-            Fc_delta_img = Fc_img_pre[frame_for_estimation] - Fc_img_post
+            Fc_arr_delta = Fc_arr_pre - Fc_arr_post
+            DD_arr_delta = DD_arr_post - DD_arr_pre
 
             i = 0
-            for DD_delta_frame, Fc_delta_frame in zip(DD_delta_img, Fc_delta_img):
-                arr_dd_delta = ma.masked_array(DD_delta_frame, mask=~img_mask).compressed()
-                arr_fc_delta = ma.masked_array(Fc_delta_frame, mask=~img_mask).compressed()
-
-                delta_zeros = np.array([any(t) for t in zip(arr_dd_delta<=0, arr_fc_delta<=0)], dtype=np.bool_)
-                arr_dd_delta, arr_fc_delta = arr_dd_delta[~delta_zeros], arr_fc_delta[~delta_zeros]
-
-                g_fit = stats.linregress(x=arr_dd_delta, y=arr_fc_delta)
-
+            for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
+                g_fit = stats.linregress(x=dd, y=fc, alternative='greater')
                 row_dict =  {'id': output_name,
                              'frame_n': i,
                              'g_val': g_fit.slope,
@@ -506,19 +491,7 @@ def g_calc(viewer: Viewer,
                                     row_df.astype(g_df.dtypes)],
                                     ignore_index=True)
                 i += 1
-
-            show_info(f'{output_name}: G-factor saved')
-            if save_Fc_and_G_img:
-                G_img = np.array(Fc_delta_img / DD_delta_img).clip(min=0)
-                # g_img = __G_img(Fc_pre_img=Fc_img_pre[frame_for_estimation],
-                #                 Fc_post_img=Fc_img_post,
-                #                 dd_pre_img=pre_DD_img.data[frame_for_estimation],
-                #                 dd_post_img=post_DD_img.data,
-                #                 mask=img_mask)
-                
-                yield (g_df, Fc_img_pre, Fc_img_post, G_img)
-            else:
-                yield (g_df)
+            return (g_df, roi_mask)
 
         _g_calc()
 
