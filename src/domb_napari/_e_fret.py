@@ -20,6 +20,13 @@ from skimage import feature
 from skimage import segmentation
 
 
+def Fc_img(dd_img, da_img, aa_img, a, d):
+    dd_img = dd_img.astype(np.float32)
+    da_img = da_img.astype(np.float32)
+    aa_img = aa_img.astype(np.float32)
+    Fc_img = da_img - aa_img*a - dd_img*d
+    return Fc_img.clip(min=0.0)
+
 class Eapp():
     def __init__(self, dd_img:np.ndarray, da_img:np.ndarray, aa_img:np.ndarray,  # ad_img:np.ndarray,
                  abcd_list:list, G_val:float,

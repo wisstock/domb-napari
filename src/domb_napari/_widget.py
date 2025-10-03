@@ -417,9 +417,9 @@ def g_calc(viewer: Viewer,
             raise ValueError('Incorrect input post-image shape!')
         if not np.all([pre_DD_img.data.ndim == 3, pre_DA_img.data.ndim == 3, pre_AA_img.data.ndim == 3]):
             raise ValueError('Incorrect input pre-image shape!')
+        output_name = pre_AA_img.name.replace('_ch3','')
 
         def _save_g_data(output):
-            output_name = pre_AA_img.name.replace('_ch3','')
             df_name = f"{output_name}_f{pre_frame_for_estimation}_g_factor.csv"
             output[0].to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: G-factor saved')
@@ -435,33 +435,28 @@ def g_calc(viewer: Viewer,
             ax = mpl_fig.add_subplot(111)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            ax.plot(output[0]['frame_n'], output[0]['g_val'], color='blue', linewidth=2)
+            ax.plot(output[0]['frame_n'], output[0]['g_val'],
+                    marker='o', color='blue', linewidth=2)
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Frame')
             ax.set_ylabel('G-factor')
-            plt.title(f'{output_name}, esimation of G-factor')
+            plt.title(f'{output_name}, G-factor for all post frames with 95% CI')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
-
-
 
         @thread_worker(connect={'returned':_save_g_data})
         def _g_calc():
-            def __Fc_img(dd_img, da_img, aa_img, a, d):
-                Fc_img = da_img - aa_img*a - dd_img*d
-                return Fc_img.clip(min=0)
-
-            output_name = pre_AA_img.name.replace('_ch3','')
+            start = time.perf_counter()
             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
             g_df = pd.DataFrame(columns=col_list)
 
-            Fc_img_pre = __Fc_img(dd_img=pre_DD_img.data.astype(np.float32),
-                                  da_img=pre_DA_img.data.astype(np.float32),
-                                  aa_img=pre_AA_img.data.astype(np.float32),
-                                  a=a, d=d)
-            Fc_img_post = __Fc_img(dd_img=post_DD_img.data.astype(np.float32),
-                                   da_img=post_DA_img.data.astype(np.float32),
-                                   aa_img=post_AA_img.data.astype(np.float32),
-                                   a=a, d=d)
+            Fc_img_pre = e_fret.Fc_img(dd_img=pre_DD_img.data,
+                                       da_img=pre_DA_img.data,
+                                       aa_img=pre_AA_img.data,
+                                       a=a, d=d)
+            Fc_img_post = e_fret.Fc_img(dd_img=post_DD_img.data,
+                                        da_img=post_DA_img.data,
+                                        aa_img=post_AA_img.data,
+                                        a=a, d=d)
             img_mask = mask.data != 0
             roi_mask = utils.mask_segmentation(img_mask)
 
@@ -473,11 +468,13 @@ def g_calc(viewer: Viewer,
             DD_arr_post = utils.labels_to_profiles(roi_mask, post_DD_img.data)
 
             Fc_arr_delta = Fc_arr_pre - Fc_arr_post
+            Fc_arr_delta = Fc_arr_delta.T
             DD_arr_delta = DD_arr_post - DD_arr_pre
+            DD_arr_delta = DD_arr_delta.T
 
             i = 0
             for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
-                g_fit = stats.linregress(x=dd, y=fc, alternative='greater')
+                g_fit = stats.linregress(dd, fc)
                 row_dict =  {'id': output_name,
                              'frame_n': i,
                              'g_val': g_fit.slope,
@@ -491,6 +488,8 @@ def g_calc(viewer: Viewer,
                                     row_df.astype(g_df.dtypes)],
                                     ignore_index=True)
                 i += 1
+            end = time.perf_counter()
+            show_info(f'{output_name} G-factor estimated in {end - start:.2f} s')
             return (g_df, roi_mask)
 
         _g_calc()
