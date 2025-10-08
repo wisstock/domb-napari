@@ -435,8 +435,12 @@ def g_calc(viewer: Viewer,
             ax = mpl_fig.add_subplot(111)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            ax.plot(output[0]['frame_n'], output[0]['g_val'],
-                    marker='o', color='blue', linewidth=2)
+            # ax.plot(output[0]['frame_n'], output[0]['g_val'],
+            #         marker='o', color='blue', linewidth=2)
+            ax.errorbar(output[0]['frame_n'], output[0]['g_val'],
+                    yerr = 1.96 * output[0]['g_err'],
+                    fmt ='-o', capsize=0,
+                    alpha=0.75, color='blue')
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Frame')
             ax.set_ylabel('G-factor')
@@ -458,7 +462,12 @@ def g_calc(viewer: Viewer,
                                         aa_img=post_AA_img.data,
                                         a=a, d=d)
             img_mask = mask.data != 0
-            roi_mask = utils.mask_segmentation(img_mask)
+            img_mask_area = np.sum(img_mask)
+            fragment_area = img_mask_area // 30
+            if fragment_area < 300:
+                raise ValueError('The mask area is too small for segmentation, please select larger area!')
+
+            roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
 
             pre_f_start, pre_frame_end = pre_frame_for_estimation, pre_frame_for_estimation+1
             Fc_arr_pre = utils.labels_to_profiles(roi_mask, Fc_img_pre[pre_f_start:pre_frame_end])
@@ -842,11 +851,6 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                         **baseline_params)
         end = time.perf_counter()
         show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
-
-        # plotting
-        # if profiles_range:
-        #     profile_to_plot = profile_to_plot[:,profiles_range[0]:profiles_range[1]]
-        #     time_line = time_line[profiles_range[0]:profiles_range[1]]
 
         lab_colors = labels.get_color([prop['label'] for prop in measure.regionprops(label_image=input_labels)])
 
