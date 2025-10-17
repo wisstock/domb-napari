@@ -617,9 +617,15 @@ def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5):
 
         @thread_worker(connect={'yielded':_save_rel_img})
         def _rel_series():
+            start = time.perf_counter()
+
             input_img = img.data
             mode_dict = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0'}
             output_img = utils.delta_img(input_img, mode=mode_dict[values_mode], win_size=F0_win)
+        
+            end = time.perf_counter()
+            show_info(f'{img.name}: {values_mode} img calculated in {end-start:.2f}s')
+
             yield (output_img, img.name + f'_{values_mode}')
 
         _rel_series()

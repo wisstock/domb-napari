@@ -6,6 +6,8 @@ import pathlib
 import os
 import time
 
+from numba import njit
+
 import pandas as pd
 import numpy as np
 from numpy import ma
@@ -20,12 +22,11 @@ from skimage import feature
 from skimage import segmentation
 
 
-def Fc_img(dd_img, da_img, aa_img, a, d):
-    dd_img = dd_img.astype(np.float32)
-    da_img = da_img.astype(np.float32)
-    aa_img = aa_img.astype(np.float32)
+@njit(parallel=True, cache=True)
+def Fc_img(dd_img, da_img, aa_img, a=0.18, d=0.26):
+    """ Sensitized fluorescence calculation with numba JIT """
     Fc_img = da_img - aa_img*a - dd_img*d
-    return Fc_img.clip(min=0.0)
+    return np.clip(Fc_img, a_min=0, a_max=None)
 
 class Eapp():
     def __init__(self, dd_img:np.ndarray, da_img:np.ndarray, aa_img:np.ndarray,  # ad_img:np.ndarray,

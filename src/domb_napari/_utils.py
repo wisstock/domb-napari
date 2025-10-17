@@ -1,12 +1,12 @@
 """ Utilities for domb-napari plugin.
 
 """
+import numba
+from numba import njit
 
 import numpy as np
 from numpy import ma
-from numba import jit, njit
 import pandas as pd
-
 from skimage import segmentation
 
 from scipy import ndimage as ndi
@@ -156,7 +156,7 @@ def back_substr(input_img:np.ndarray, percentile:float=1.0):
 
     """
     input_type = input_img.dtype
-    if input_type in [float, np.float32, np.float64]:
+    if input_type in [float, np.float32]:
         raise TypeError(f'Float image type is not recommended: {input_type}. Prefered raw data types are: uint8, uint16, int16, int32.')
     if input_img.dtype != np.int32:  # double precision for uint16 images
         input_img = input_img.astype(np.int32)
@@ -172,6 +172,7 @@ def back_substr(input_img:np.ndarray, percentile:float=1.0):
     return corrected_img.astype(input_type)
 
 
+# no JIT
 def get_bright_channel(input_img:np.ndarray):
     """ Get index of the brightest channel from a multi-channel image series.
 
@@ -181,7 +182,7 @@ def get_bright_channel(input_img:np.ndarray):
         input multi-channel image series
 
     Returns
-    -------
+    -------parallel=True, cache=True
     return bright_idx: int
         index of the brightest channel
 
@@ -192,6 +193,7 @@ def get_bright_channel(input_img:np.ndarray):
     return bright_idx
 
 
+# no JIT
 def mask_segmentation(input_mask:np.ndarray, fragment_num:int=30):
     """ Segmentation of the input binary mask by distance transform and watershed algorithm.
 
@@ -226,43 +228,56 @@ def mask_segmentation(input_mask:np.ndarray, fragment_num:int=30):
     return rois
 
 
+@numba.njit(parallel=True, cache=True)
+def _delta_df_kernel(input_img, base_img, norm_img, output_img):
+    """Numba function for 'dF' mode calculation."""
+    for i in numba.prange(input_img.shape[0]):
+        output_img[i] = (input_img[i] - base_img) * norm_img
+
+@numba.njit(parallel=True, cache=True)
+def _delta_df_f0_kernel(input_img, base_img, norm_img, output_img):
+    """Numba function for 'dF/F0' mode calculation."""
+    epsilon = 1e-9
+    for i in numba.prange(input_img.shape[0]):
+        output_img[i] = ((input_img[i] - base_img) * norm_img) / ((base_img * norm_img) + epsilon)
+
 def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
-    """ Compute pixel-wise delta image from the input image series.
+    """
+    Compute pixel-wise delta image from the input image series.
     
     Parameters
     ----------
     input_img : np.ndarray
-        A 3D array where each slice corresponds to a frame of the image, and each pixel contains intensity values.
+        A 3D array where each slice corresponds to a frame.
     mode : str, optional
-        The mode of output image calculation. Options are 'dF/F0' (relative intensity changes), or 'dF' (absolute intensity changes normalized to initial intensity).
+        Mode of calculation: 'dF/F0' or 'dF'.
     win_size : int, optional
-        The number of the initial frames used for baseline estimation. Default is 5.
+        The number of initial frames for baseline estimation.
+        
     Returns
     -------
     np.ndarray
-        A 3D array same shape as input_img, where each pixel value is the delta value calculated according to the specified mode.
+        A 3D array with the calculated delta values.
     """
-    if input_img.dtype not in [np.int16, np.int32, np.int64]:
-        input_img = input_img.astype(np.int64)
-
-    base_img = np.mean(input_img[:win_size], axis=0)
+    base_img = np.mean(input_img[:win_size], axis=0).astype(np.float32)
+    output_img = np.empty_like(input_img, dtype=np.float32)
     norm_img = np.max(input_img, axis=0)
-    norm_img = ((norm_img - np.min(base_img)) / (np.max(norm_img) - np.min(base_img))).clip(0, 1)
+    norm_range = np.max(norm_img) - np.min(base_img)
+    if norm_range == 0:
+        norm_range = 1.0            
+    norm_img = ((norm_img - np.min(base_img)) / norm_range).clip(0, 1)
 
-    output_img = np.empty_like(input_img, dtype=np.float64)
-    for i in range(input_img.shape[0]):
-        if mode == 'dF':
-            output_img[i] = (input_img[i] - base_img)  * norm_img
-        elif mode == 'dF/F0':
-            output_img[i] = ((input_img[i] - base_img) / base_img)
-        else:
-            raise ValueError("Unknown mode! Use 'dF' or 'dF/F0'.")
+    if mode == 'dF':        
+        _delta_df_kernel(input_img, base_img, norm_img, output_img)
+    elif mode == 'dF/F0':
+        _delta_df_f0_kernel(input_img, base_img, norm_img, output_img)
+    else:
+        raise ValueError("Unknown mode! Use 'dF' or 'dF/F0'.")
 
-    del base_img, norm_img  # Free memory
     return output_img
 
 
-@njit()
+@njit(parallel=True, cache=True)
 def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
     """ Averages the pixel values of each label region across all frames in the input image.
     
@@ -280,7 +295,7 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
         containing the average pixel values for that region across all frames [lab, frame, time].
 
     """
-    input_img = input_img.astype(np.float64)
+    input_img = input_img.astype(np.float32)
     prof_arr = []
     for label_num in np.unique(input_label)[1:]:
         region_idxs = np.where(input_label == label_num)
@@ -294,6 +309,7 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
     return np.asarray(prof_arr, dtype=np.float32)
 
 
+# no JIT
 def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
                       mode:str='ΔF', **kwargs):
     """ Computes the baseline of each profile in the input array using the Dietrich's method.
@@ -336,6 +352,7 @@ def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
     return np.asarray(output_arr)
 
 
+# no JIT
 def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='ΔF', **kwargs):
     """ Computes the baseline of each profile in the input array using a baseline estimation by the begingng of the profiles.
     Parameters
