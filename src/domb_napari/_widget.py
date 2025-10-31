@@ -1151,7 +1151,7 @@ def save_df(img:Image, labels:Labels,
         df_name = df_name.replace('_xform','')
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
-        show_info(f'Input shape {img.name.shape}, labels shape {labels.shape}')
+        show_info(f'Input shape {input_img.shape}, labels shape {input_labels.shape}')
 
         if save_ROIs_distances:
             col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
