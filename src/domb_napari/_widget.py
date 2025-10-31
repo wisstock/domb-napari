@@ -363,19 +363,19 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:
                     c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
 
                     row_dict =  {'id': img_name,
-                                    'frame_n': i,
-                                    c_prm_name+'_val': c_prm_fit.slope,
-                                    c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
-                                    c_prm_name+'_err': c_prm_fit.stderr,
-                                    c_prm_name+'_i': c_prm_fit.intercept,
-                                    c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
-                                    c_prm_name+'_r^2': c_prm_fit.rvalue,
-                                    c_off_name+'_val': c_off_fit.slope,
-                                    c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
-                                    c_off_name+'_err': c_off_fit.stderr,
-                                    c_off_name+'_i': c_off_fit.intercept,
-                                    c_off_name+'_i_err': c_off_fit.intercept_stderr,
-                                    c_off_name+'_r^2': c_off_fit.rvalue}      
+                                 'frame_n': i,
+                                 c_prm_name+'_val': c_prm_fit.slope,
+                                 c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
+                                 c_prm_name+'_err': c_prm_fit.stderr,
+                                 c_prm_name+'_i': c_prm_fit.intercept,
+                                 c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
+                                 c_prm_name+'_r^2': c_prm_fit.rvalue,
+                                 c_off_name+'_val': c_off_fit.slope,
+                                 c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
+                                 c_off_name+'_err': c_off_fit.stderr,
+                                 c_off_name+'_i': c_off_fit.intercept,
+                                 c_off_name+'_i_err': c_off_fit.intercept_stderr,
+                                 c_off_name+'_r^2': c_off_fit.rvalue}      
                     row_df = pd.DataFrame(row_dict, index=[0])
                     c_df = pd.concat([c_df.astype(row_df.dtypes),
                                         row_df.astype(c_df.dtypes)],
@@ -417,7 +417,7 @@ def g_calc(viewer: Viewer,
             raise ValueError('Incorrect input post-image shape!')
         if not np.all([pre_DD_img.data.ndim == 3, pre_DA_img.data.ndim == 3, pre_AA_img.data.ndim == 3]):
             raise ValueError('Incorrect input pre-image shape!')
-        output_name = pre_AA_img.name.replace('_ch3','')
+        output_name = post_AA_img.name.replace('_ch3','')
 
         def _save_g_data(output):
             df_name = f"{output_name}_f{pre_frame_for_estimation}_g_factor.csv"
@@ -444,7 +444,7 @@ def g_calc(viewer: Viewer,
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel('Frame')
             ax.set_ylabel('G-factor')
-            plt.title(f'{output_name}, G-factor for all post frames with 95% CI')
+            plt.title(f'{output_name} f{pre_frame_for_estimation}, G-factor for all post frames with 95% CI')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
 
         @thread_worker(connect={'returned':_save_g_data})
@@ -453,14 +453,14 @@ def g_calc(viewer: Viewer,
             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
             g_df = pd.DataFrame(columns=col_list)
 
-            Fc_img_pre = e_fret.Fc_img(dd_img=pre_DD_img.data,
-                                       da_img=pre_DA_img.data,
-                                       aa_img=pre_AA_img.data,
-                                       a=a, d=d)
-            Fc_img_post = e_fret.Fc_img(dd_img=post_DD_img.data,
-                                        da_img=post_DA_img.data,
-                                        aa_img=post_AA_img.data,
-                                        a=a, d=d)
+            Fc_img_pre = e_fret._Fc_calc(dd_img=pre_DD_img.data,
+                                         da_img=pre_DA_img.data,
+                                         aa_img=pre_AA_img.data,
+                                         a_val=a, d_val=d)
+            Fc_img_post = e_fret._Fc_calc(dd_img=post_DD_img.data,
+                                          da_img=post_DA_img.data,
+                                          aa_img=post_AA_img.data,
+                                          a_val=a, d_val=d)
             img_mask = mask.data != 0
             img_mask_area = np.sum(img_mask)
             fragment_area = img_mask_area // 30
@@ -507,7 +507,7 @@ def g_calc(viewer: Viewer,
 @magic_factory(call_button='Estimate E-FRET',
                output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.1846, d:float=0.2646, G:float=0.0,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=
+               a:float=0.1846, d:float=0.2646, G:float=1.63,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=1.63
                output_type:str='Fc',
                Ecorr_mask:Labels=None,
                save_normalized:bool=True):
@@ -525,25 +525,36 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
         @thread_worker(connect={'yielded':_save_e_app})
         def _e_app_calc():
-            e_fret_img = e_fret.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
-                                    abcd_list=[a,0,0,d], G_val=G,
-                                    mask=Ecorr_mask.data if Ecorr_mask is not None else None)
-            output_name = AA_img.name.replace('_ch3','')
+            start = time.perf_counter()
+            # e_fret_img = e_fret.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
+            #                         abcd_list=[a,0,0,d], G_val=G,
+            #                         mask=Ecorr_mask.data if Ecorr_mask is not None else None)
+            e_fret_img = e_fret.E_FRET(dd_img=DD_img.data,
+                                       da_img=DA_img.data,
+                                       aa_img=AA_img.data,
+                                       a_val=a,
+                                       d_val=d,
+                                       G_val=G)
+            output_name = AA_img.name.replace('_ch3', '')
             if output_type == 'Ecorr':
-                output_fret_img = e_fret_img.Ecorr_img
+                output_fret_img = e_fret_img.Ecorr_img()
                 output_suffix = '_Ecorr'
             elif output_type == 'Eapp':
-                output_fret_img = e_fret_img.Eapp_img
+                output_fret_img = e_fret_img.Eapp_img()
                 output_suffix = '_Eapp'
             elif output_type == 'Fc':
-                output_fret_img = e_fret_img.Fc_img
+                output_fret_img = e_fret_img.Fc_img()
                 output_suffix = '_Fc'
             yield (output_fret_img, output_name + output_suffix)
             if save_normalized:
+                epsilon = 1e-12
                 img_norm = np.mean(AA_img.data, axis=0)
-                img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm))
+                img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm) + epsilon)
                 output_norm = output_fret_img*img_norm
                 yield (output_norm, output_name + output_suffix + '_norm')
+            
+            end = time.perf_counter()
+            show_info(f'{output_type} img calculated in {end-start:.2f}s')
 
         _e_app_calc()
 
@@ -1140,27 +1151,31 @@ def save_df(img:Image, labels:Labels,
         df_name = df_name.replace('_xform','')
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
+        show_info(f'Input shape {img.name.shape}, labels shape {labels.shape}')
 
         if save_ROIs_distances:
             col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
             tip_position_img = np.ones_like(input_img[0], dtype=bool)
+            print(tip_position_img.shape)
             if custom_stim_position:
                 try:
-                    tip_x, tip_y = int(stim_position.data[0][1]), int(stim_position.data[0][2])  # for time series
+                    tip_x, tip_y = int(stim_position.data[0][-2]), int(stim_position.data[0][-1])  # for time series
+                    show_info(f'{img.name}: custom stim position {tip_x, tip_y}')
                     tip_position_img[tip_x,tip_y] = False
                 except AttributeError:
                     show_warning(f"{img.name}: no stim position, using img center position!")
                     tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
+                    show_info(f'{img.name}: center stim position {tip_x, tip_y}')
                     tip_position_img[tip_x,tip_y] = False
             else:
                 tip_x, tip_y = tip_position_img.shape[0]//2, tip_position_img.shape[1]//2
+                show_info(f'{img.name}: center stim position {tip_x, tip_y}')
                 tip_position_img[tip_x,tip_y] = False
             tip_distance_img = ndi.distance_transform_edt(tip_position_img)
             distance_list = []
             for label_num in np.unique(input_labels)[1:]:
                 region_mask = input_labels == label_num
                 distance_list.append(round(np.mean(tip_distance_img, where=region_mask)))
-            show_info(f'{img.name}: stim position {tip_x, tip_y}')
         else:
             col_list = ['id', 'lab_id', 'roi', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
 
