@@ -22,7 +22,6 @@ from dipy.align.transforms import AffineTransform2D
 from dipy.align.imaffine import AffineRegistration
 
 
-
 def red_green_cmap():
     """ Red-green colormap for visualizing fluorescence changes.
 
@@ -73,24 +72,24 @@ def delta_cmap():
 
 
 def delta_smooth_cmap():
-    """ Symmetric colormap for visualizing fluorescence changes.
+    """ Smooth symmetric colormap for visualizing fluorescence changes.
 
     """
-    return vispy.color.Colormap([[0.0, 0.2, 0.6],     # темно-синій
-                                [0.0, 0.3, 0.7],      # синій
-                                [0.0, 0.4, 0.8],      # світло-синій
-                                [0.0, 0.5, 0.9],      # яскравий синій
-                                [0.2, 0.6, 1.0],      # світлий синій
-                                [0.4, 0.7, 1.0],      # дуже світлий синій
-                                [0.6, 0.8, 1.0],      # блідо-синій
-                                [0.0, 0.0, 0.0],      # чорний (центр)
-                                [0.4, 0.2, 0.0],      # темно-коричневий
-                                [0.6, 0.3, 0.0],      # коричневий
-                                [0.8, 0.4, 0.0],      # темно-оранжевий
-                                [1.0, 0.5, 0.0],      # оранжевий
-                                [1.0, 0.6, 0.2],      # світло-оранжевий
-                                [1.0, 0.7, 0.4],      # персиковий
-                                [1.0, 0.8, 0.6]])     # світло-персиковий
+    return vispy.color.Colormap([[0.0, 0.2, 0.6],
+                                 [0.0, 0.3, 0.7],
+                                 [0.0, 0.4, 0.8],
+                                 [0.0, 0.5, 0.9],
+                                 [0.2, 0.6, 1.0],
+                                 [0.4, 0.7, 1.0],
+                                 [0.6, 0.8, 1.0],
+                                 [0.0, 0.0, 0.0],
+                                 [0.4, 0.2, 0.0],
+                                 [0.6, 0.3, 0.0],
+                                 [0.8, 0.4, 0.0],
+                                 [1.0, 0.5, 0.0],
+                                 [1.0, 0.6, 0.2],
+                                 [1.0, 0.7, 0.4],
+                                 [1.0, 0.8, 0.6]])
 
 
 def pb_exp_correction(input_img:np.ndarray, mask:np.ndarray, method:str='exp'):
