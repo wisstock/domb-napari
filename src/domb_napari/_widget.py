@@ -291,29 +291,29 @@ def split_sep(viewer: Viewer, img:Image,
             raise ValueError('The input image should have 3 dimensions!')
 
 
-@magic_factory(call_button='Estimate crosstalk',
+@magic_factory(call_button='Estimate cross-talk',
                presented_fluorophore={"choices": ['A', 'D']},
                saving_path={'mode': 'd'})
-def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:Image,
+def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                mask: Labels,
                presented_fluorophore:str='A',
                saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
-        if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3, AD_img.data.ndim == 3]):
+        if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
             raise ValueError('Incorrect input image shape!')
 
         def _save_cross_data(input_coefs):
             output_name = AA_img.name.replace('_ch3','')
-            output_df = input_coefs[0]
-
+            
             # data frame saving
+            output_df = input_coefs[0]
+            output_df.insert(0, 'id', output_name)
             df_name = f"{output_name}_{presented_fluorophore}_coef.csv"
             output_df.to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: {presented_fluorophore} coeficients saved')
                 
-            # pixel values for last frame
-            x_arr = input_coefs[1]
-            y_arr = input_coefs[2]
+            # pixel values for first frame
+            x_arr, y_arr = input_coefs[1][0,0], input_coefs[1][0,1]
 
             # regression line for lasta frame
             last_slope = output_df.iloc[-1,2]
@@ -322,7 +322,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:
             x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
             y_line = last_slope*x_line + last_intercept
 
-            show_info(f'The last frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f} coeficients saved')
+            show_info(f'The 1st frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f}')
 
             # last frame plot
             axis_lab_dict = {'A':['AA, a.u.','DA, a.u.', 'a'],
@@ -342,65 +342,130 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:
 
         @thread_worker(connect={'returned':_save_cross_data})
         def _cross_calc():
-            output_name = AA_img.name.replace('_ch3','')
-
-            input_labels = mask.data
-            input_mask = input_labels != 0
-            
-            def c_calc(img_ref, img_prm, img_off, img_mask,
-                       c_prm_name, c_off_name, img_name):
-                col_list = ['id', 'frame_n',
-                            c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
-                            c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
-                c_df = pd.DataFrame(columns=col_list)
-
-                for i in range(len(img_ref)):
-                    arr_ref = ma.masked_array(img_ref[i], mask=~img_mask).compressed()
-                    arr_prm = ma.masked_array(img_prm[i], mask=~img_mask).compressed()
-                    arr_off = ma.masked_array(img_off[i], mask=~img_mask).compressed()
-
-                    c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
-                    c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
-
-                    row_dict =  {'id': img_name,
-                                 'frame_n': i,
-                                 c_prm_name+'_val': c_prm_fit.slope,
-                                 c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
-                                 c_prm_name+'_err': c_prm_fit.stderr,
-                                 c_prm_name+'_i': c_prm_fit.intercept,
-                                 c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
-                                 c_prm_name+'_r^2': c_prm_fit.rvalue,
-                                 c_off_name+'_val': c_off_fit.slope,
-                                 c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
-                                 c_off_name+'_err': c_off_fit.stderr,
-                                 c_off_name+'_i': c_off_fit.intercept,
-                                 c_off_name+'_i_err': c_off_fit.intercept_stderr,
-                                 c_off_name+'_r^2': c_off_fit.rvalue}      
-                    row_df = pd.DataFrame(row_dict, index=[0])
-                    c_df = pd.concat([c_df.astype(row_df.dtypes),
-                                        row_df.astype(c_df.dtypes)],
-                                        ignore_index=True)
-                return (c_df,arr_ref,arr_prm)
-
+            input_mask = mask.data != 0
+            cross_estimator = e_fret.cross_talk_estimation(mask=input_mask,
+                                                           dd_img=DD_img.data,
+                                                           da_img=DA_img.data,
+                                                           aa_img=AA_img.data)
             if presented_fluorophore == 'A':
-                coefs = c_calc(img_ref = AA_img.data,
-                               img_prm = DA_img.data,
-                               img_off = DD_img.data,
-                               img_mask = input_mask,
-                               c_prm_name = 'a',
-                               c_off_name = 'b',
-                               img_name = output_name)
+                coefs = cross_estimator.estimate_a()
             if presented_fluorophore == 'D':
-                coefs = c_calc(img_ref = DD_img.data,
-                               img_prm = DA_img.data,
-                               img_off = AA_img.data,
-                               img_mask = input_mask,
-                               c_prm_name = 'd',
-                               c_off_name = 'c',
-                               img_name = output_name)
+                coefs = cross_estimator.estimate_d()
             return coefs
 
         _cross_calc()
+
+
+# old one
+# @magic_factory(call_button='Estimate crosstalk',
+#                presented_fluorophore={"choices": ['A', 'D']},
+#                saving_path={'mode': 'd'})
+# def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AD_img:Image, AA_img:Image,
+#                mask: Labels,
+#                presented_fluorophore:str='A',
+#                saving_path:pathlib.Path = os.getcwd()):
+#     if input is not None:
+#         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3, AD_img.data.ndim == 3]):
+#             raise ValueError('Incorrect input image shape!')
+
+#         def _save_cross_data(input_coefs):
+#             output_name = AA_img.name.replace('_ch3','')
+#             output_df = input_coefs[0]
+
+#             # data frame saving
+#             df_name = f"{output_name}_{presented_fluorophore}_coef.csv"
+#             output_df.to_csv(os.path.join(saving_path, df_name))
+#             show_info(f'{df_name}: {presented_fluorophore} coeficients saved')
+                
+#             # pixel values for last frame
+#             x_arr = input_coefs[1]
+#             y_arr = input_coefs[2]
+
+#             # regression line for lasta frame
+#             last_slope = output_df.iloc[-1,2]
+#             last_intercept = output_df.iloc[-1,5]
+#             last_r2 = output_df.iloc[-1,7]
+#             x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
+#             y_line = last_slope*x_line + last_intercept
+
+#             show_info(f'The last frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f} coeficients saved')
+
+#             # last frame plot
+#             axis_lab_dict = {'A':['AA, a.u.','DA, a.u.', 'a'],
+#                              'D':['DD, a.u.','DA, a.u.', 'd']}
+
+#             mpl_fig = plt.figure()
+#             ax = mpl_fig.add_subplot(111)
+#             ax.spines['top'].set_visible(False)
+#             ax.spines['right'].set_visible(False)
+#             ax.scatter(x_arr, y_arr, s=5, alpha=0.15, color='blue')
+#             ax.plot(x_line, y_line, color='red', linewidth=2)
+#             ax.grid(color='grey', linewidth=.25)
+#             ax.set_xlabel(axis_lab_dict[presented_fluorophore][0])
+#             ax.set_ylabel(axis_lab_dict[presented_fluorophore][1])
+#             plt.title(f'{output_name}, esimation of {axis_lab_dict[presented_fluorophore][2]}')
+#             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Cross-talk estimation')
+
+#         @thread_worker(connect={'returned':_save_cross_data})
+#         def _cross_calc():
+#             output_name = AA_img.name.replace('_ch3','')
+
+#             input_labels = mask.data
+#             input_mask = input_labels != 0
+            
+#             def c_calc(img_ref, img_prm, img_off, img_mask,
+#                        c_prm_name, c_off_name, img_name):
+#                 col_list = ['id', 'frame_n',
+#                             c_prm_name+'_val', c_prm_name+'_p', c_prm_name+'_err', c_prm_name+'_i', c_prm_name+'_i_err', c_prm_name+'_r^2',
+#                             c_off_name+'_val', c_off_name+'_p', c_off_name+'_err', c_off_name+'_i', c_off_name+'_i_err', c_off_name+'_r^2']
+#                 c_df = pd.DataFrame(columns=col_list)
+
+#                 for i in range(len(img_ref)):
+#                     arr_ref = ma.masked_array(img_ref[i], mask=~img_mask).compressed()
+#                     arr_prm = ma.masked_array(img_prm[i], mask=~img_mask).compressed()
+#                     arr_off = ma.masked_array(img_off[i], mask=~img_mask).compressed()
+
+#                     c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
+#                     c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
+
+#                     row_dict =  {'id': img_name,
+#                                  'frame_n': i,
+#                                  c_prm_name+'_val': c_prm_fit.slope,
+#                                  c_prm_name+'_p': "{:.5f}".format(c_prm_fit.pvalue),
+#                                  c_prm_name+'_err': c_prm_fit.stderr,
+#                                  c_prm_name+'_i': c_prm_fit.intercept,
+#                                  c_prm_name+'_i_err': c_prm_fit.intercept_stderr,
+#                                  c_prm_name+'_r^2': c_prm_fit.rvalue,
+#                                  c_off_name+'_val': c_off_fit.slope,
+#                                  c_off_name+'_p': "{:.5f}".format(c_off_fit.pvalue),
+#                                  c_off_name+'_err': c_off_fit.stderr,
+#                                  c_off_name+'_i': c_off_fit.intercept,
+#                                  c_off_name+'_i_err': c_off_fit.intercept_stderr,
+#                                  c_off_name+'_r^2': c_off_fit.rvalue}      
+#                     row_df = pd.DataFrame(row_dict, index=[0])
+#                     c_df = pd.concat([c_df.astype(row_df.dtypes),
+#                                         row_df.astype(c_df.dtypes)],
+#                                         ignore_index=True)
+#                 return (c_df,arr_ref,arr_prm)
+
+#             if presented_fluorophore == 'A':
+#                 coefs = c_calc(img_ref = AA_img.data,
+#                                img_prm = DA_img.data,
+#                                img_off = DD_img.data,
+#                                img_mask = input_mask,
+#                                c_prm_name = 'a',
+#                                c_off_name = 'b',
+#                                img_name = output_name)
+#             if presented_fluorophore == 'D':
+#                 coefs = c_calc(img_ref = DD_img.data,
+#                                img_prm = DA_img.data,
+#                                img_off = AA_img.data,
+#                                img_mask = input_mask,
+#                                c_prm_name = 'd',
+#                                c_off_name = 'c',
+#                                img_name = output_name)
+#             return coefs
+#         _cross_calc()
 
 
 @magic_factory(call_button='Estimate G-factor',
@@ -409,7 +474,8 @@ def g_calc(viewer: Viewer,
            pre_DD_img:Image, pre_DA_img:Image, pre_AA_img:Image,
            post_DD_img:Image, post_DA_img:Image, post_AA_img:Image,
            mask: Labels,
-           a:float=0.1846, d:float=0.2646,  # a & d for TagBFP+mBaoJin
+           segment_mask:bool=True,
+           a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
            pre_frame_for_estimation:int=0,
            saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
@@ -424,19 +490,18 @@ def g_calc(viewer: Viewer,
             output[0].to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: G-factor saved')
 
-            lab_name = f"{output_name}_seg_labels"
-            try:
-                viewer.layers[lab_name].data = output[1]
-            except KeyError:
-                new_labels = viewer.add_labels(output[1], name=lab_name, opacity=0.5)
-                new_labels.contour = 0
+            if segment_mask:
+                lab_name = f"{output_name}_seg_labels"
+                try:
+                    viewer.layers[lab_name].data = output[1]
+                except KeyError:
+                    new_labels = viewer.add_labels(output[1], name=lab_name, opacity=0.5)
+                    new_labels.contour = 0
 
             mpl_fig = plt.figure()
             ax = mpl_fig.add_subplot(111)
             ax.spines['top'].set_visible(False)
             ax.spines['right'].set_visible(False)
-            # ax.plot(output[0]['frame_n'], output[0]['g_val'],
-            #         marker='o', color='blue', linewidth=2)
             ax.errorbar(output[0]['frame_n'], output[0]['g_val'],
                     yerr = 1.96 * output[0]['g_err'],
                     fmt ='-o', capsize=0,
@@ -453,6 +518,7 @@ def g_calc(viewer: Viewer,
             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
             g_df = pd.DataFrame(columns=col_list)
 
+            show_info(f'{output_name}: G-factor estimation started, using a={a}, d={d}')
             Fc_img_pre = e_fret._Fc_calc(dd_img=pre_DD_img.data,
                                          da_img=pre_DA_img.data,
                                          aa_img=pre_AA_img.data,
@@ -461,13 +527,17 @@ def g_calc(viewer: Viewer,
                                           da_img=post_DA_img.data,
                                           aa_img=post_AA_img.data,
                                           a_val=a, d_val=d)
-            img_mask = mask.data != 0
-            img_mask_area = np.sum(img_mask)
-            fragment_area = img_mask_area // 30
-            if fragment_area < 300:
-                raise ValueError('The mask area is too small for segmentation, please select larger area!')
+            if segment_mask:
+                img_mask = mask.data != 0
+                img_mask_area = np.sum(img_mask)
+                fragment_area = img_mask_area // 30
+                if fragment_area < 300:
+                    raise ValueError('The mask area is too small for segmentation, please select larger area!')
 
-            roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
+                roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
+            else:
+                roi_mask = mask.data
+                show_info(f'{output_name}: G-factor estimation with provided mask, {np.max(roi_mask)} ROIs')
 
             pre_f_start, pre_frame_end = pre_frame_for_estimation, pre_frame_for_estimation+1
             Fc_arr_pre = utils.labels_to_profiles(roi_mask, Fc_img_pre[pre_f_start:pre_frame_end])
@@ -507,7 +577,7 @@ def g_calc(viewer: Viewer,
 @magic_factory(call_button='Estimate E-FRET',
                output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.1846, d:float=0.2646, G:float=1.63,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.1846, d=0.2646, G=1.63
+               a:float=0.0136, d:float=0.2646, G:float=2.792,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.792
                output_type:str='Fc',
                Ecorr_mask:Labels=None,
                save_normalized:bool=True):
