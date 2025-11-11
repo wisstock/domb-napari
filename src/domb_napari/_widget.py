@@ -11,14 +11,12 @@ import time
 
 import pandas as pd
 import numpy as np
-from numpy import ma
 from scipy import ndimage as ndi
 from scipy import stats
 
 from skimage import filters
 from skimage import morphology
 from skimage import measure
-from skimage import restoration
 from skimage import feature
 from skimage import segmentation
 
@@ -27,9 +25,6 @@ from matplotlib.backends.backend_qt5agg import FigureCanvas
 
 from dipy.align.transforms import AffineTransform2D
 from dipy.align.imaffine import AffineRegistration
-
-# from domb.utils import masking
-# from domb.fret.e_fret import e_app
 
 import domb_napari._utils as utils
 import domb_napari._e_fret as e_fret
@@ -111,7 +106,7 @@ def split_channels(viewer: Viewer, img:Image,
 
 
 @magic_factory(call_button='Align stack',
-               align_method={"choices": ['internal', 'load matrix', 'reference']},
+               align_method={"choices": ['internal', 'load matrix']},
                load_matrix={'mode': 'r', 'filter': 'Text files (*.txt)'},
                saving_path={'mode': 'd'},)
 def dw_registration(viewer: Viewer, offset_img:Image,
@@ -207,7 +202,6 @@ def dw_registration(viewer: Viewer, offset_img:Image,
                                                axis=1)                   
                     else:
                         raise ValueError(f'The input image have {input_data.shape[1]} spectral ch., but 2 or 4 ch. are required!')
-
                 elif align_method == 'reference':
                     show_warning('Sorry, this mode is under development!')
 
@@ -222,73 +216,6 @@ def dw_registration(viewer: Viewer, offset_img:Image,
             _dw_registration()
         else:
             raise ValueError('Incorrect dimensions of the input image!')
-
-
-@magic_factory(call_button='Split SEP',
-               pH_1st_frame={"choices": ['7.3', '6.0']},)
-def split_sep(viewer: Viewer, img:Image,
-              pH_1st_frame:str='7.3',
-              calc_surface_img:bool=False,
-              calc_projections:bool=False):
-    if input is not None:
-        if img.data.ndim == 3:
-
-            def _save_sep(params):
-                img = params[0]
-                img_name = params[1]
-                cmap_rg = False
-                if len(params) == 3:
-                    cmap_rg = params[2]
-                try: 
-                    viewer.layers[img_name].data = img
-                except KeyError:
-                    new_image = viewer.add_image(img, name=img_name, colormap='turbo')
-                    if cmap_rg:
-                        new_image.colormap = 'red-green', _red_green()
-                    else:
-                        new_image.colormap = 'turbo'
-
-            @thread_worker(connect={'yielded':_save_sep})
-            def _split_sep():
-                sep_img = img.data.astype(float)
-
-                if pH_1st_frame == '7.3':
-                    total_start_i, intra_start_i = 0, 1
-                elif pH_1st_frame == '6.0':
-                    total_start_i, intra_start_i = 1, 0
-
-                total_img = sep_img[total_start_i::2,:,:]  # 0
-                intra_img = sep_img[intra_start_i::2,:,:]  # 1
-
-                total_name = img.name + '_total'
-                intra_name = img.name + '_intra'
-
-                yield (total_img, total_name)
-                yield (intra_img, intra_name)
-
-                if calc_projections:
-                    projections_diff = lambda x: np.max(x, axis=0) - np.mean(x, axis=0)
-                    yield (projections_diff(total_img),
-                           img.name + '_total-projection',
-                           True)
-                    yield (projections_diff(intra_img),
-                           img.name + '_intra-projection',
-                           True)
-                    yield (np.max(intra_img, axis=0),
-                           img.name + '_intra-mip')
-
-                if calc_surface_img:
-                    surface_img = total_img - intra_img
-                    yield (surface_img,
-                           img.name + '_surface')
-                    if calc_projections:
-                        yield (projections_diff(surface_img),
-                               img.name + '_surface-projection',
-                               True)
-            
-            _split_sep()
-        else:
-            raise ValueError('The input image should have 3 dimensions!')
 
 
 @magic_factory(call_button='Estimate cross-talk',
@@ -461,119 +388,11 @@ def g_calc(viewer: Viewer,
         _g_calc()
 
 
-# old one
-# @magic_factory(call_button='Estimate G-factor',
-#                saving_path={'mode': 'd'})
-# def g_calc(viewer: Viewer,
-#            pre_DD_img:Image, pre_DA_img:Image, pre_AA_img:Image,
-#            post_DD_img:Image, post_DA_img:Image, post_AA_img:Image,
-#            mask: Labels,
-#            segment_mask:bool=True,
-#            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
-#            pre_frame_for_estimation:int=0,
-#            saving_path:pathlib.Path = os.getcwd()):
-#     if input is not None:
-#         if not np.all([post_DD_img.data.ndim == 3, post_DA_img.data.ndim == 3, post_AA_img.data.ndim == 3]):
-#             raise ValueError('Incorrect input post-image shape!')
-#         if not np.all([pre_DD_img.data.ndim == 3, pre_DA_img.data.ndim == 3, pre_AA_img.data.ndim == 3]):
-#             raise ValueError('Incorrect input pre-image shape!')
-#         output_name = post_AA_img.name.replace('_ch3','')
-
-#         def _save_g_data(output):
-#             df_name = f"{output_name}_f{pre_frame_for_estimation}_g_factor.csv"
-#             output[0].to_csv(os.path.join(saving_path, df_name))
-#             show_info(f'{df_name}: G-factor saved')
-
-#             if segment_mask:
-#                 lab_name = f"{output_name}_seg_labels"
-#                 try:
-#                     viewer.layers[lab_name].data = output[1]
-#                 except KeyError:
-#                     new_labels = viewer.add_labels(output[1], name=lab_name, opacity=0.5)
-#                     new_labels.contour = 0
-
-#             mpl_fig = plt.figure()
-#             ax = mpl_fig.add_subplot(111)
-#             ax.spines['top'].set_visible(False)
-#             ax.spines['right'].set_visible(False)
-#             ax.errorbar(output[0]['frame_n'], output[0]['g_val'],
-#                     yerr = 1.96 * output[0]['g_err'],
-#                     fmt ='-o', capsize=0,
-#                     alpha=0.75, color='blue')
-#             ax.grid(color='grey', linewidth=.25)
-#             ax.set_xlabel('Frame')
-#             ax.set_ylabel('G-factor')
-#             plt.title(f'{output_name} f{pre_frame_for_estimation}, G-factor for all post frames with 95% CI')
-#             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
-
-#         @thread_worker(connect={'returned':_save_g_data})
-#         def _g_calc():
-#             start = time.perf_counter()
-#             col_list = ['id', 'frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2']
-#             g_df = pd.DataFrame(columns=col_list)
-
-#             show_info(f'{output_name}: G-factor estimation started, using a={a}, d={d}')
-#             Fc_img_pre = e_fret._Fc_calc(dd_img=pre_DD_img.data,
-#                                          da_img=pre_DA_img.data,
-#                                          aa_img=pre_AA_img.data,
-#                                          a_val=a, d_val=d)
-#             Fc_img_post = e_fret._Fc_calc(dd_img=post_DD_img.data,
-#                                           da_img=post_DA_img.data,
-#                                           aa_img=post_AA_img.data,
-#                                           a_val=a, d_val=d)
-#             if segment_mask:
-#                 img_mask = mask.data != 0
-#                 img_mask_area = np.sum(img_mask)
-#                 fragment_area = img_mask_area // 30
-#                 if fragment_area < 300:
-#                     raise ValueError('The mask area is too small for segmentation, please select larger area!')
-
-#                 roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
-#             else:
-#                 roi_mask = mask.data
-#                 show_info(f'{output_name}: G-factor estimation with provided mask, {np.max(roi_mask)} ROIs')
-
-#             pre_f_start, pre_frame_end = pre_frame_for_estimation, pre_frame_for_estimation+1
-#             Fc_arr_pre = utils.labels_to_profiles(roi_mask, Fc_img_pre[pre_f_start:pre_frame_end])
-#             Fc_arr_post = utils.labels_to_profiles(roi_mask, Fc_img_post)
-
-#             DD_arr_pre = utils.labels_to_profiles(roi_mask, pre_DD_img.data[pre_f_start:pre_frame_end])
-#             DD_arr_post = utils.labels_to_profiles(roi_mask, post_DD_img.data)
-
-#             Fc_arr_delta = Fc_arr_pre - Fc_arr_post
-#             Fc_arr_delta = Fc_arr_delta.T
-#             DD_arr_delta = DD_arr_post - DD_arr_pre
-#             DD_arr_delta = DD_arr_delta.T
-
-#             i = 0
-#             for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
-#                 g_fit = stats.linregress(dd, fc)
-#                 row_dict =  {'id': output_name,
-#                              'frame_n': i,
-#                              'g_val': g_fit.slope,
-#                              'g_p': "{:.5f}".format(g_fit.pvalue),
-#                              'g_err': g_fit.stderr,
-#                              'g_i': g_fit.intercept,
-#                              'g_i_err': g_fit.intercept_stderr,
-#                              'g_r^2': g_fit.rvalue}      
-#                 row_df = pd.DataFrame(row_dict, index=[0])
-#                 g_df = pd.concat([g_df.astype(row_df.dtypes),
-#                                     row_df.astype(g_df.dtypes)],
-#                                     ignore_index=True)
-#                 i += 1
-#             end = time.perf_counter()
-#             show_info(f'{output_name} G-factor estimated in {end - start:.2f} s')
-#             return (g_df, roi_mask)
-
-#         _g_calc()
-
-
 @magic_factory(call_button='Estimate E-FRET',
                output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                a:float=0.0136, d:float=0.2646, G:float=2.792,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.792
                output_type:str='Fc',
-               Ecorr_mask:Labels=None,
                save_normalized:bool=True):
     if input is not None:
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
@@ -590,9 +409,6 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         @thread_worker(connect={'yielded':_save_e_app})
         def _e_app_calc():
             start = time.perf_counter()
-            # e_fret_img = e_fret.Eapp(dd_img=DD_img.data, da_img=DA_img.data, aa_img=AA_img.data,
-            #                         abcd_list=[a,0,0,d], G_val=G,
-            #                         mask=Ecorr_mask.data if Ecorr_mask is not None else None)
             e_fret_img = e_fret.E_FRET(dd_img=DD_img.data,
                                        da_img=DA_img.data,
                                        aa_img=AA_img.data,
@@ -616,7 +432,6 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                 img_norm = (img_norm-np.min(img_norm)) / (np.max(img_norm)-np.min(img_norm) + epsilon)
                 output_norm = output_fret_img*img_norm
                 yield (output_norm, output_name + output_suffix + '_norm')
-            
             end = time.perf_counter()
             show_info(f'{output_type} img calculated in {end-start:.2f}s')
 
@@ -1050,22 +865,18 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
             ax.axhline(y=0.0, color='k', linestyle='--')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-
         ax.grid(color='grey', linewidth=.25)
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
-
         ax.errorbar(time_line_0, arr_val_0,
                     yerr = arr_var_0,
                     fmt ='-o', capsize=2, label=img_0.name,
                     alpha=0.75, color='black')
-        
         if profiles_num == '2' or profiles_num == '3':
             ax.errorbar(time_line_1, arr_val_1,
                         yerr = arr_var_1,
                         fmt ='-o', capsize=2, label=img_1.name,
                         alpha=0.75, color='red')
-
         if profiles_num == '3':
             ax.errorbar(time_line_2, arr_val_2,
                         yerr = arr_var_2,
@@ -1170,28 +981,23 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
             ax.axhline(y=0.0, color='k', linestyle='--')
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-
         ax.grid(color='grey', linewidth=.25)
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
-
         ax.errorbar(time_line, arr_val_0,
                     yerr = arr_var_0,
                     fmt ='-o', capsize=2, label=lab_0.name,
                     alpha=0.75, color='black')
-        
         if labels_num == '2' or labels_num == '3':
             ax.errorbar(time_line, arr_val_1,
                         yerr = arr_var_1,
                         fmt ='-o', capsize=2, label=lab_1.name,
                         alpha=0.75, color='red')
-
         if labels_num == '3':
             ax.errorbar(time_line, arr_val_2,
                         yerr = arr_var_2,
                         fmt ='-o', capsize=2, label=lab_2.name,
                         alpha=0.75, color='blue')
-        
         plt.legend()
         plt.title(f'{img.name}, method {stat_method}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Lab Stat Prof.')
@@ -1209,6 +1015,8 @@ def save_df(img:Image, labels:Labels,
             stim_position:Points=None,
             saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
+        if img.data[0].shape != labels.data.shape:
+            raise ValueError(f'Frames of the input image and labels should have the same size! Input shape {input_img.shape}, labels shape {input_labels.shape}.')
         input_img = img.data
         input_labels = labels.data
         df_name = img.name + '_' + labels.name
@@ -1253,7 +1061,7 @@ def save_df(img:Image, labels:Labels,
                                                 win_size=ΔF_win)
         # Dietrich baseline calc
         profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs',
-                                                  win_size=Dietrich_win, stds=Dietrich_std)
+                                                   win_size=Dietrich_win, stds=Dietrich_std)
         profile_dF_base = utils.delta_prof_pybase(profile_abs, mode='ΔF',
                                                   win_size=Dietrich_win, stds=Dietrich_std)
         profile_dF_F0_base = utils.delta_prof_pybase(profile_abs, mode='ΔF/F0',
@@ -1306,7 +1114,6 @@ def save_df(img:Image, labels:Labels,
 
 
 if __name__ == '__main__':
-
     import napari
     viewer = napari.Viewer()
     viewer = Viewer()

@@ -9,9 +9,6 @@ contributions:
     - id: domb-napari.dw_registration_widget
       title: Dual-view stack registration
       python_name: domb_napari._widget:dw_registration
-    - id: domb-napari.split_sep_widget
-      title: SEP image preprocessing
-      python_name: domb_napari._widget:split_sep
     - id: domb-napari.cross_calc_widget
       title: E-FRET crosstalk estimation
       python_name: domb_napari._widget:cross_calc
@@ -58,13 +55,11 @@ contributions:
     - command: domb-napari.rel_series_widget
       display_name: ΔF series
     - command: domb-napari.cross_calc_widget
-      display_name: E-FRET crosstalk estimation
+      display_name: E-FRET cross-talk estimation
     - command: domb-napari.g_calc_widget
       display_name: E-FRET G-factor estimation
     - command: domb-napari.e_app_widget
       display_name: E-FRET estimation
-    - command: domb-napari.split_sep_widget
-      display_name: SEP preprocessing
     - command: domb-napari.dot_mask_widget
       display_name: Dot-patterns masking
     - command: domb-napari.up_mask_calc_widget

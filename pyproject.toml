@@ -1,12 +1,12 @@
 [project]
 name = "domb-napari"
-version = "0.4.2.1"
+version = "0.5.0"
 authors = [
   {name = "Borys Olifirov", email = "omnia.faty@gmail.com"}
 ]
 description = "napari plugin for analyzing the redistribution of fluorescence-labeled proteins"
 readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">= 3.8"
+requires-python = ">= 3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 
@@ -14,21 +14,27 @@ classifiers = [
     "Framework :: napari",
 
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
 
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
-    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Visualization",
     "Topic :: Utilities"
 ]
 
 dependencies = [
     "napari",
     "dipy",
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "tifffile",
+    "pandas",
+    "matplotlib",
     "numba",
     "pybaselines"
 ]

@@ -56,7 +56,6 @@ def _Ecor_calc(dd_img, da_img, aa_img, a_val, d_val, G_val, corr_img):
     E_cor_img = E_app_img * corr_img
     return E_cor_img
 
-
 class E_FRET():
     """ Class for estimating FRET efficiency in image time series
 

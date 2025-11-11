@@ -5,21 +5,16 @@ import numba
 from numba import njit
 
 import numpy as np
-from numpy import ma
 import pandas as pd
 from skimage import segmentation
 
 from scipy import ndimage as ndi
 from scipy import stats
-from scipy import signal
 from scipy import stats
 from scipy import optimize
 
 import vispy.color
 from pybaselines import Baseline
-
-from dipy.align.transforms import AffineTransform2D
-from dipy.align.imaffine import AffineRegistration
 
 
 def red_green_cmap():
