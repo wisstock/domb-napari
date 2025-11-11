@@ -11,27 +11,25 @@ import numpy as np
 from numpy import ma
 from numba import njit, prange
 
-from scipy import ndimage as ndi
 from scipy import stats
-
 import pandas as pd
 
-from skimage import morphology
-from skimage import measure
-from skimage import feature
-
-import ._utils as utils
+import domb_napari._utils as utils
 
 
 @njit(parallel=True, cache=True)
 def _Fc_calc(dd_img, da_img, aa_img, a_val, d_val):
-    """ Sensitized fluorescence calculation """
+    """ Sensitized fluorescence calculation
+    
+    """
     Fc_img = da_img - aa_img * a_val - dd_img * d_val
     return np.clip(Fc_img, a_min=0, a_max=None)
 
 @njit(parallel=True, cache=True)
 def _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
-    """ Apparent FRET efficiency calculation """
+    """ Apparent FRET efficiency calculation
+    
+    """
     fc_img = _Fc_calc(dd_img, da_img, aa_img, a_val, d_val)
     E_app_img = np.zeros_like(fc_img)
 
@@ -51,29 +49,31 @@ def _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
 
 @njit(parallel=True, cache=True)
 def _Ecor_calc(dd_img, da_img, aa_img, a_val, d_val, G_val, corr_img):
-    """ Corrected FRET efficiency calculation """
+    """ Corrected FRET efficiency calculation
+    
+    """
     E_app_img = _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val)
     E_cor_img = E_app_img * corr_img
     return E_cor_img
 
 
 class E_FRET():
-    """ Class for estimating FRET efficiency in image time series.
+    """ Class for estimating FRET efficiency in image time series
 
     Parameters/attributes
     ----------
     dd_img: ndarray [t,x,y]
-        image time series with donor excitation-donor emission
+        Time series with donor excitation-donor emission
     da_img: ndarray [t,x,y]
-        image time series with donor excitation-acceptor emission
+        Time series with donor excitation-acceptor emission
     aa_img: ndarray [t,x,y]
-        image time series with acceptor excitation-acceptor emission
+        Time series with acceptor excitation-acceptor emission
     a_val: float
-        acceptor cross-talk coefficient (I_DA(A) / I_AA(A))
+        Acceptor cross-talk coefficient (I_DA(A) / I_AA(A))
     d_val: float
-        donor cross-talk coefficient (I_DA(D) / I_DD(D))
+        Donor cross-talk coefficient (I_DA(D) / I_DD(D))
     G_val: float
-        gauge ("G") parameter of imaging system
+        Gauge ("G") factor of imaging system
 
     Methods
     -------
@@ -88,7 +88,8 @@ class E_FRET():
         returns ndarray [t,x,y]
 
     """
-    def __init__(self, dd_img, da_img, aa_img, a_val, d_val, G_val):
+    def __init__(self, dd_img, da_img, aa_img,
+                 a_val, d_val, G_val):
         self.dd_img = dd_img
         self.da_img = da_img
         self.aa_img = aa_img
@@ -118,13 +119,13 @@ class cross_talk_estimation():
     Parameters/attributes
     ----------
     dd_img: ndarray [t,x,y]
-        image time series with donor excitation-donor emission
+        Time series with donor excitation-donor emission
     da_img: ndarray [t,x,y]
-        image time series with donor excitation-acceptor emission
+        Time series with donor excitation-acceptor emission
     aa_img: ndarray [t,x,y]
-        image time series with acceptor excitation-acceptor emission
+        Time series with acceptor excitation-acceptor emission
     mask: ndarray [x,y]
-        binary mask for pixels to be used in estimation
+        Binary mask for pixels to be used in estimation
         
     Methods
     -------
@@ -149,7 +150,8 @@ class cross_talk_estimation():
     @staticmethod
     def _coef_calc(img_ref, img_prm, img_off, img_mask,
                    c_prm_name, c_off_name):
-        """ Generalized function for cross-talk coefficient calculation with linear fit
+        """ Generalized function for cross-talk coefficient calculation
+        with linear fit
         
         Returns
         -------
@@ -223,30 +225,30 @@ class cross_talk_estimation():
 
 
 class G_factor_estimation():
-    """ Class for estimating G factor from image time series.
+    """ Class for estimating G factor from image time series
 
     Parameters/attributes
     ----------
     mask: ndarray [x,y]
         binary mask for pixels to be used in estimation
-    pre_dd_img: ndarray [x,y]
-        image time series with donor excitation-donor emission
-        with larger expected FRET
-    pre_da_img: ndarray [x,y]
-        image time series with donor excitation-acceptor emission
-        with larger expected FRET
-    pre_aa_img: ndarray [x,y]
-        image time series with acceptor excitation-acceptor emission
-        with larger expected FRET
-    post_dd_img: ndarray [t,x,y]
-        image time series with donor excitation-donor emission
-        with smaller expected FRET
-    post_da_img: ndarray [t,x,y]
-        image time series with donor excitation-acceptor emission
-        with smaller expected FRET
-    post_aa_img: ndarray [t,x,y]
-        image time series with acceptor excitation-acceptor emission
-        with smaller expected FRET
+    h_dd_img: ndarray [x,y]
+        One frame obtained with donor excitation-donor emission
+        with higher expected FRET (before acceptor photobleaching or after acceptor recovery)
+    h_da_img: ndarray [x,y]
+        One frame obtained with donor excitation-acceptor emission
+        with higher expected FRET (before acceptor photobleaching or after acceptor recovery)
+    h_aa_img: ndarray [x,y]
+        One frame obtained with acceptor excitation-acceptor emission
+        with higher expected FRET (before acceptor photobleaching or after acceptor recovery)
+    l_dd_img: ndarray [t,x,y]
+        Time series with donor excitation-donor emission
+        with lower expected FRET (after acceptor photobleaching or before acceptor recovery)
+    l_da_img: ndarray [t,x,y]
+        Time series with donor excitation-acceptor emission
+        with lower expected FRET (after acceptor photobleaching or before acceptor recovery)
+    l_aa_img: ndarray [t,x,y]
+        Time series with acceptor excitation-acceptor emission
+        with lower expected FRET (after acceptor photobleaching or before acceptor recovery)
     a_val: float
         acceptor cross-talk coefficient
     d_val: float
@@ -256,26 +258,28 @@ class G_factor_estimation():
     -------
     estimate_g():
         Estimate G factor of imaging system
+        returns tupple (g_df, fit_arr) with dataframe of G factors estimated for all post frames
+        and array of fit data
 
     """
     def __init__(self, mask,
-                 pre_dd_img=None, pre_da_img=None, pre_aa_img=None,
-                 post_dd_img=None, post_da_img=None, post_aa_img=None,
+                 h_dd_img=None, h_da_img=None, h_aa_img=None,
+                 l_dd_img=None, l_da_img=None, l_aa_img=None,
                  a_val=None, d_val=None):
-        if any(img is None for img in [pre_dd_img, pre_da_img, pre_aa_img,
-                                       post_dd_img, post_da_img, post_aa_img]):
+        if any(img is None for img in [h_dd_img, h_da_img, h_aa_img,
+                                       l_dd_img, l_da_img, l_aa_img]):
             raise ValueError("All spectral channels must be provided!")
-        if not np.all([pre_dd_img.ndim == 2, pre_da_img.ndim == 2, pre_aa_img.ndim == 2]):
+        if not np.all([h_dd_img.ndim == 2, h_da_img.ndim == 2, h_aa_img.ndim == 2]):
             raise ValueError('Incorrect input pre-image shape, should be 2D frame!')
-        if not np.all([post_dd_img.ndim == 3, post_da_img.ndim == 3, post_aa_img.ndim == 3]):
+        if not np.all([l_dd_img.ndim == 3, l_da_img.ndim == 3, l_aa_img.ndim == 3]):
             raise ValueError('Incorrect input post-image shape, should be 3D time series!')
 
-        self.pre_dd_img = pre_dd_img
-        self.pre_da_img = pre_da_img
-        self.pre_aa_img = pre_aa_img
-        self.post_dd_img = post_dd_img
-        self.post_da_img = post_da_img
-        self.post_aa_img = post_aa_img
+        self.h_dd_img = h_dd_img
+        self.h_da_img = h_da_img
+        self.h_aa_img = h_aa_img
+        self.l_dd_img = l_dd_img
+        self.l_da_img = l_da_img
+        self.l_aa_img = l_aa_img
         self.a_val = a_val
         self.d_val = d_val
         self.mask = mask
@@ -285,45 +289,49 @@ class G_factor_estimation():
 
         Returns
         -------
-        g_val: float
-            estimated G factor
+        g_df: pd.DataFrame
+            DataFrame with estimated G factors for all post frames
+        fit_arr: np.ndarray
+            Array with fit data for all post frames [(dd_delta, fc_delta), ...]
 
         """
-        g_df = pd.DataFrame(columns=['frame_n', 'g_val', 'g_p', 'g_err', 'g_i', 'g_i_err', 'g_r^2'])
+        g_df = pd.DataFrame(columns=['frame_n', 'g_val', 'g_p', 'g_err',
+                                     'g_i', 'g_i_err', 'g_r^2'])
 
-        Fc_img_pre = _Fc_calc(dd_img=self.pre_dd_img,
-                              da_img=self.pre_da_img,
-                              aa_img=self.pre_aa_img,
+        Fc_img_h = _Fc_calc(dd_img=self.h_dd_img,
+                              da_img=self.h_da_img,
+                              aa_img=self.h_aa_img,
                               a_val=self.a_val, d_val=self.d_val)
-        Fc_img_post = _Fc_calc(dd_img=self.post_dd_img,
-                               da_img=self.post_da_img,
-                               aa_img=self.post_aa_img,
+        Fc_img_h = Fc_img_h[np.newaxis, ...]
+        Fc_img_l = _Fc_calc(dd_img=self.l_dd_img,
+                               da_img=self.l_da_img,
+                               aa_img=self.l_aa_img,
                                a_val=self.a_val, d_val=self.d_val)
-        
-        Fc_arr_pre = utils.labels_to_profiles(self.mask, Fc_img_pre)
-        Fc_arr_post = utils.labels_to_profiles(self.mask, Fc_img_post)
-        Fc_arr_delta = Fc_arr_pre - Fc_arr_post
+        Fc_arr_h = utils.labels_to_profiles(self.mask, Fc_img_h)
+        Fc_arr_l = utils.labels_to_profiles(self.mask, Fc_img_l)
+        Fc_arr_delta = Fc_arr_h - Fc_arr_l
         Fc_arr_delta = Fc_arr_delta.T
 
-        DD_arr_pre = utils.labels_to_profiles(self.mask, self.pre_dd_img[pre_f_start:pre_frame_end])
-        DD_arr_post = utils.labels_to_profiles(self.mask, self.post_dd_img)
-        DD_arr_delta = DD_arr_post - DD_arr_pre
+        DD_arr_h = utils.labels_to_profiles(self.mask, self.h_dd_img[np.newaxis, ...])  # add axis for shape consistency
+        DD_arr_l = utils.labels_to_profiles(self.mask, self.l_dd_img)
+        DD_arr_delta = DD_arr_l - DD_arr_h
         DD_arr_delta = DD_arr_delta.T
 
+        fit_arr = []
         i = 0
         for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
+            fit_arr.append((dd, fc))
             g_fit = stats.linregress(dd, fc)
             row_dict =  {'frame_n': i,
-                            'g_val': g_fit.slope,
-                            'g_p': "{:.5f}".format(g_fit.pvalue),
-                            'g_err': g_fit.stderr,
-                            'g_i': g_fit.intercept,
-                            'g_i_err': g_fit.intercept_stderr,
-                            'g_r^2': g_fit.rvalue}      
+                         'g_val': g_fit.slope,
+                         'g_p': "{:.5f}".format(g_fit.pvalue),
+                         'g_err': g_fit.stderr,
+                         'g_i': g_fit.intercept,
+                         'g_i_err': g_fit.intercept_stderr,
+                         'g_r^2': g_fit.rvalue}      
             row_df = pd.DataFrame(row_dict, index=[0])
             g_df = pd.concat([g_df.astype(row_df.dtypes),
                                 row_df.astype(g_df.dtypes)],
                                 ignore_index=True)
             i += 1
-        show_info(f'{output_name} G-factor estimated in {end - start:.2f} s')
-        return (g_df, roi_mask)
+        return (g_df, np.array(fit_arr))

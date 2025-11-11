@@ -302,27 +302,24 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
             raise ValueError('Incorrect input image shape!')
 
-        def _save_cross_data(input_coefs):
+        def _save_cross_data(output):
             output_name = AA_img.name.replace('_ch3','')
             
             # data frame saving
-            output_df = input_coefs[0]
+            output_df = output[0]
             output_df.insert(0, 'id', output_name)
-            df_name = f"{output_name}_{presented_fluorophore}_coef.csv"
+            df_name = f"{output_name}_{presented_fluorophore}.csv"
             output_df.to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: {presented_fluorophore} coeficients saved')
                 
-            # pixel values for first frame
-            x_arr, y_arr = input_coefs[1][0,0], input_coefs[1][0,1]
-
-            # regression line for lasta frame
+            # regression line for last frame
+            x_arr, y_arr = output[1][-1,0], output[1][-1,1]
             last_slope = output_df.iloc[-1,2]
             last_intercept = output_df.iloc[-1,5]
             last_r2 = output_df.iloc[-1,7]
             x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
             y_line = last_slope*x_line + last_intercept
-
-            show_info(f'The 1st frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f}')
+            show_info(f'Last frame slope {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f}')
 
             # last frame plot
             axis_lab_dict = {'A':['AA, a.u.','DA, a.u.', 'a'],
@@ -359,45 +356,73 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 @magic_factory(call_button='Estimate G-factor',
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
-           pre_DD_img:Image, pre_DA_img:Image, pre_AA_img:Image,
-           post_DD_img:Image, post_DA_img:Image, post_AA_img:Image,
+           DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
+           DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
            mask: Labels,
            segment_mask:bool=True,
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
-           pre_frame_for_estimation:int=0,
+           hight_frame_for_estimation:int=0,
            saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
-        if not np.all([post_DD_img.data.ndim == 3, post_DA_img.data.ndim == 3, post_AA_img.data.ndim == 3]):
-            raise ValueError('Incorrect input post-image shape!')
-        if not np.all([pre_DD_img.data.ndim == 3, pre_DA_img.data.ndim == 3, pre_AA_img.data.ndim == 3]):
-            raise ValueError('Incorrect input pre-image shape!')
+        if not np.all([DD_img_low_FRET.data.ndim == 3, DA_img_low_FRET.data.ndim == 3, AA_img_low_FRET.data.ndim == 3]):
+            raise ValueError('Incorrect input low FRET image shape!')
+        if not np.all([DD_img_high_FRET.data.ndim == 3, DA_img_high_FRET.data.ndim == 3, AA_img_high_FRET.data.ndim == 3]):
+            raise ValueError('Incorrect input high FRET image shape!')
 
         def _save_g_data(output):
-            output_name = post_AA_img.name.replace('_ch3','')
-            df_name = f"{output_name}_f{pre_frame_for_estimation}_g_factor.csv"
-            output[0].to_csv(os.path.join(saving_path, df_name))
+            output_name = AA_img_low_FRET.name.replace('_ch3','')
+            # data frame saving
+            output_df = output[0]
+            output_df.insert(0, 'id', output_name)
+            df_name = f"{output_name}_f{hight_frame_for_estimation}_G.csv"
+            output_df.to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: G-factor saved')
 
+            # segmented mask saving
             if segment_mask:
                 lab_name = f"{output_name}_seg_labels"
                 try:
-                    viewer.layers[lab_name].data = output[1]
+                    viewer.layers[lab_name].data = output[-1]
                 except KeyError:
-                    new_labels = viewer.add_labels(output[1], name=lab_name, opacity=0.5)
+                    new_labels = viewer.add_labels(output[-1], name=lab_name, opacity=0.5)
                     new_labels.contour = 0
 
+            # regression line for 1st frame
+            x_arr, y_arr = output[1][0,0], output[1][0,1]
+            fit_slope = output_df.iloc[0,2]
+            fit_intercept = output_df.iloc[0,5]
+            fit_r2 = output_df.iloc[0,7]
+            x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
+            y_line = fit_slope*x_line + fit_intercept
+            show_info(f'1st frame slope {fit_slope:.3f}, intercept {fit_intercept:.3f}, r² {fit_r2:.4f}')
+
+            # plotting
             mpl_fig = plt.figure()
-            ax = mpl_fig.add_subplot(111)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.errorbar(output[0]['frame_n'], output[0]['g_val'],
-                    yerr = 1.96 * output[0]['g_err'],
+            
+            # G-factor fit for 1st frame
+            ax0 = mpl_fig.add_subplot(121)
+            ax0.spines['top'].set_visible(False)
+            ax0.spines['right'].set_visible(False)
+            ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
+            ax0.plot(x_line, y_line, color='red', linewidth=2)
+            ax0.grid(color='grey', linewidth=.25)
+            ax0.set_xlabel('ΔDD, a.u.')
+            ax0.set_ylabel('ΔFc, a.u.')
+            ax0.set_title(f'1st low FRET frame, G={fit_slope:.3f}', fontsize=10)
+
+            # G-factor in frames plot
+            ax1 = mpl_fig.add_subplot(122)
+            ax1.spines['top'].set_visible(False)
+            ax1.spines['right'].set_visible(False)
+            ax1.errorbar(output_df['frame_n'], output_df['g_val'],
+                    yerr = 1.96 * output_df['g_err'],
                     fmt ='-o', capsize=0,
                     alpha=0.75, color='blue')
-            ax.grid(color='grey', linewidth=.25)
-            ax.set_xlabel('Frame')
-            ax.set_ylabel('G-factor')
-            plt.title(f'{output_name} f{pre_frame_for_estimation}, G-factor for all post frames with 95% CI')
+            ax1.grid(color='grey', linewidth=.25)
+            ax1.set_xlabel('Frame')
+            ax1.set_ylabel('G-factor')
+            ax1.set_title(f'All low FRET frames, 95% CI', fontsize=10)
+            plt.suptitle(f'{output_name} G-factor estimation, high FRET frame {hight_frame_for_estimation}')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
 
         @thread_worker(connect={'returned':_save_g_data})
@@ -411,43 +436,27 @@ def g_calc(viewer: Viewer,
                 fragment_area = img_mask_area // 30
                 if fragment_area < 300:
                     raise ValueError('The mask area is too small for segmentation, please select larger area!')
-
                 roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
             else:
                 roi_mask = mask.data
                 show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
 
-            pre_f_start, pre_frame_end = pre_frame_for_estimation, pre_frame_for_estimation+1
-            Fc_arr_pre = utils.labels_to_profiles(roi_mask, Fc_img_pre[pre_f_start:pre_frame_end])
-            Fc_arr_post = utils.labels_to_profiles(roi_mask, Fc_img_post)
-
-            DD_arr_pre = utils.labels_to_profiles(roi_mask, pre_DD_img.data[pre_f_start:pre_frame_end])
-            DD_arr_post = utils.labels_to_profiles(roi_mask, post_DD_img.data)
-
-            Fc_arr_delta = Fc_arr_pre - Fc_arr_post
-            Fc_arr_delta = Fc_arr_delta.T
-            DD_arr_delta = DD_arr_post - DD_arr_pre
-            DD_arr_delta = DD_arr_delta.T
-
-            i = 0
-            for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
-                g_fit = stats.linregress(dd, fc)
-                row_dict =  {'id': output_name,
-                             'frame_n': i,
-                             'g_val': g_fit.slope,
-                             'g_p': "{:.5f}".format(g_fit.pvalue),
-                             'g_err': g_fit.stderr,
-                             'g_i': g_fit.intercept,
-                             'g_i_err': g_fit.intercept_stderr,
-                             'g_r^2': g_fit.rvalue}      
-                row_df = pd.DataFrame(row_dict, index=[0])
-                g_df = pd.concat([g_df.astype(row_df.dtypes),
-                                    row_df.astype(g_df.dtypes)],
-                                    ignore_index=True)
-                i += 1
+            g_estimator = e_fret.G_factor_estimation(mask=roi_mask,
+                                                     h_dd_img=DD_img_high_FRET.data[hight_frame_for_estimation],
+                                                     h_da_img=DA_img_high_FRET.data[hight_frame_for_estimation],
+                                                     h_aa_img=AA_img_high_FRET.data[hight_frame_for_estimation],
+                                                     l_dd_img=DD_img_low_FRET.data,
+                                                     l_da_img=DA_img_low_FRET.data,
+                                                     l_aa_img=AA_img_low_FRET.data,
+                                                     a_val=a,
+                                                     d_val=d)
+            coef = g_estimator.estimate_g()
             end = time.perf_counter()
-            show_info(f'{output_name} G-factor estimated in {end - start:.2f} s')
-            return (g_df, roi_mask)
+            show_info(f'G-factor estimated in {end - start:.2f}s')
+            if segment_mask:
+                return (*coef, roi_mask)
+            else:
+                return coef
 
         _g_calc()
 
