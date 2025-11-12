@@ -35,7 +35,7 @@ import domb_napari._e_fret as e_fret
                correction_method={"choices": ['exp', 'bi_exp']},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
-                   median_filter:bool=False, median_kernel:int=2,  #gaussian_blur:bool=True, gaussian_sigma=0.75,
+                   median_filter:bool=False, median_kernel:int=2,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
                    use_correction_mask:bool=False,
@@ -267,10 +267,10 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         @thread_worker(connect={'returned':_save_cross_data})
         def _cross_calc():
             input_mask = mask.data != 0
-            cross_estimator = e_fret.cross_talk_estimation(mask=input_mask,
-                                                           dd_img=DD_img.data,
-                                                           da_img=DA_img.data,
-                                                           aa_img=AA_img.data)
+            cross_estimator = e_fret.CrossTalkEstimation(mask=input_mask,
+                                                         dd_img=DD_img.data,
+                                                         da_img=DA_img.data,
+                                                         aa_img=AA_img.data)
             if presented_fluorophore == 'A':
                 coefs = cross_estimator.estimate_a()
             if presented_fluorophore == 'D':
@@ -280,14 +280,12 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         _cross_calc()
 
 
-@magic_factory(call_button='Estimate G-factor',
-               estimation_method={"choices": ['Zal', 'Chen']},
+@magic_factory(call_button='Estimate G-factor',  # estimation_method={"choices": ['Zal', 'Chen']}
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
            DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
            DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
-           mask: Labels,
-           estimation_method:str='Zal',
+           mask: Labels,  # estimation_method:str='Zal'
            segment_mask:bool=True,
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
            saving_path:pathlib.Path = os.getcwd()):
@@ -372,7 +370,7 @@ def g_calc(viewer: Viewer,
                 roi_mask = mask.data
                 show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
 
-            g_estimator = e_fret.G_factor_estimation(mask=roi_mask,
+            g_estimator = e_fret.GFactorEstimation(mask=roi_mask,
                                                      h_dd_img=DD_img_high_FRET.data[0],
                                                      h_da_img=DA_img_high_FRET.data[0],
                                                      h_aa_img=AA_img_high_FRET.data[0],
@@ -381,10 +379,11 @@ def g_calc(viewer: Viewer,
                                                      l_aa_img=AA_img_low_FRET.data[0],
                                                      a_val=a,
                                                      d_val=d)
-            if estimation_method == 'Zal':
-                coef = g_estimator.estimate_g_zal()
-            elif estimation_method == 'Chen':
-                coef = g_estimator.estimate_g_chen()
+            coef = g_estimator.estimate_g_zal()
+            # if estimation_method == 'Zal':
+            #     coef = g_estimator.estimate_g_zal()
+            # elif estimation_method == 'Chen':
+            #     coef = g_estimator.estimate_g_chen()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:

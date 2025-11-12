@@ -42,10 +42,6 @@ def _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
 
         Fc_G_frame = Fc_frame / G_val
         E_app_frame = Fc_G_frame / (DD_frame + Fc_G_frame + epsilon)
-
-        # R_frame = Fc_frame / (DD_frame + epsilon)
-        # RG_frame = R_frame + G_val
-        # E_app_frame = R_frame / (RG_frame + epsilon)
                             
         E_app_img[i] = np.clip(E_app_frame, a_min=0, a_max=None)
     return E_app_img
@@ -115,7 +111,7 @@ class E_FRET():
                           corr_img)
     
 
-class cross_talk_estimation():
+class CrossTalkEstimation():
     """ Class for estimating cross-talk coefficients from image time series.
 
     Parameters/attributes
@@ -226,7 +222,7 @@ class cross_talk_estimation():
         return coefs
 
 
-class G_factor_estimation():
+class GFactorEstimation():
     """ Class for estimating G factor from image time series
 
     Parameters/attributes
@@ -282,8 +278,6 @@ class G_factor_estimation():
         self.l_dd_img = l_dd_img[np.newaxis, ...]
         self.l_da_img = l_da_img[np.newaxis, ...]
         self.l_aa_img = l_aa_img[np.newaxis, ...]
-
-        print(self.h_dd_img.shape, self.l_dd_img.shape)
 
         self.a_val = a_val
         self.d_val = d_val
@@ -396,3 +390,78 @@ class G_factor_estimation():
                             row_df.astype(g_df.dtypes)],
                             ignore_index=True)
         return (g_df, np.array([Fc_DD_arr_delta, DD_AA_arr_delta]))
+    
+
+class KFactorEstimation():
+    """ Class for estimating k factor for donor/acceptor ratio estimation
+
+    Based on Chen et al., 2006
+
+    Parameters/attributes
+    ----------
+    dd_img: ndarray [t,x,y]
+        Time series with donor excitation-donor emission
+    da_img: ndarray [t,x,y]
+        Time series with donor excitation-acceptor emission
+    aa_img: ndarray [t,x,y]
+        Time series with acceptor excitation-acceptor emission
+    mask: ndarray [x,y]
+        Binary mask for pixels to be used in estimation
+        
+    Methods
+    -------
+    estimate_k():
+        Estimate k factor of imaging system
+        returns tupple (k_df, fit_arr) with dataframe of k factors estimated for all frames and array of fit data
+
+    """
+    def __init__(self, mask,
+                 dd_img=None, da_img=None, aa_img=None,
+                 a_val=None, d_val=None, G_val=None):
+        if any(img is None for img in [dd_img, da_img, aa_img]):
+            raise ValueError("All spectral channels must be provided!")
+        if not np.all([dd_img.ndim == 2, da_img.ndim == 2, aa_img.ndim == 2]):
+            raise ValueError('Incorrect input image shape, must be 2D image!')
+
+        self.dd_img = dd_img[np.newaxis, ...]
+        self.da_img = da_img[np.newaxis, ...]
+        self.aa_img = aa_img[np.newaxis, ...]
+        self.mask = mask
+        self.a_val = a_val
+        self.d_val = d_val
+        self.G_val = G_val
+
+    def estimate_k(self):
+        """ Estimate k factor of imaging system
+        
+        """
+        # sensitized fluorescence images
+        Fc_img = _Fc_calc(dd_img=self.dd_img,
+                          da_img=self.da_img,
+                          aa_img=self.aa_img,
+                          a_val=self.a_val, d_val=self.d_val)
+        
+        # profiles extraction
+        Fc_arr = utils.labels_to_profiles(self.mask, Fc_img)
+        DD_arr = utils.labels_to_profiles(self.mask, self.dd_img)
+        D_tot_arr = DD_arr + (Fc_arr / self.G_val)
+
+        AA_arr = utils.labels_to_profiles(self.mask, self.aa_img)
+
+        # linear fit for k factor estimation
+        k_fit = stats.linregress(AA_arr[:,0],
+                                 D_tot_arr[:,0])
+
+        k_df = pd.DataFrame(columns=['k_val', 'k_p', 'k_err',
+                                     'k_i', 'k_i_err', 'k_r^2'])
+        row_dict =  {'k_val': k_fit.slope,
+                     'k_p': "{:.5f}".format(k_fit.pvalue),
+                     'k_err': k_fit.stderr,
+                     'k_i': k_fit.intercept,
+                     'k_i_err': k_fit.intercept_stderr,
+                     'k_r^2': k_fit.rvalue}      
+        row_df = pd.DataFrame(row_dict, index=[0])
+        k_df = pd.concat([k_df.astype(row_df.dtypes),
+                            row_df.astype(k_df.dtypes)],
+                            ignore_index=True)
+        return (k_df, np.array([AA_arr, D_tot_arr]))
