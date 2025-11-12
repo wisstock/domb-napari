@@ -281,14 +281,15 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
 
 @magic_factory(call_button='Estimate G-factor',
+               estimation_method={"choices": ['Zal', 'Chen']},
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
            DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
            DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
            mask: Labels,
+           estimation_method:str='Zal',
            segment_mask:bool=True,
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
-           hight_frame_for_estimation:int=0,
            saving_path:pathlib.Path = os.getcwd()):
     if input is not None:
         if not np.all([DD_img_low_FRET.data.ndim == 3, DA_img_low_FRET.data.ndim == 3, AA_img_low_FRET.data.ndim == 3]):
@@ -301,7 +302,7 @@ def g_calc(viewer: Viewer,
             # data frame saving
             output_df = output[0]
             output_df.insert(0, 'id', output_name)
-            df_name = f"{output_name}_f{hight_frame_for_estimation}_G.csv"
+            df_name = f"{output_name}_G.csv"
             output_df.to_csv(os.path.join(saving_path, df_name))
             show_info(f'{df_name}: G-factor saved')
 
@@ -315,18 +316,18 @@ def g_calc(viewer: Viewer,
                     new_labels.contour = 0
 
             # regression line for 1st frame
-            x_arr, y_arr = output[1][0,0], output[1][0,1]
-            fit_slope = output_df.iloc[0,2]
-            fit_intercept = output_df.iloc[0,5]
-            fit_r2 = output_df.iloc[0,7]
+            x_arr, y_arr = output[1][0], output[1][1]
+            fit_slope = output_df.iloc[0,1]
+            fit_intercept = output_df.iloc[0,4]
+            fit_r2 = output_df.iloc[0,6]
             x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
             y_line = fit_slope*x_line + fit_intercept
-            show_info(f'1st frame slope {fit_slope:.3f}, intercept {fit_intercept:.3f}, r² {fit_r2:.4f}')
+            show_info(f'G-factor fit slope {fit_slope:.3f}, intercept {fit_intercept:.3f}, r² {fit_r2:.4f}')
 
             # plotting
             mpl_fig = plt.figure()
             
-            # G-factor fit for 1st frame
+            # G-factor fit
             ax0 = mpl_fig.add_subplot(121)
             ax0.spines['top'].set_visible(False)
             ax0.spines['right'].set_visible(False)
@@ -335,21 +336,24 @@ def g_calc(viewer: Viewer,
             ax0.grid(color='grey', linewidth=.25)
             ax0.set_xlabel('ΔDD, a.u.')
             ax0.set_ylabel('ΔFc, a.u.')
-            ax0.set_title(f'1st low FRET frame, G={fit_slope:.3f}', fontsize=10)
+            ax0.set_title(f'Linear fit, G={fit_slope:.3f}', fontsize=10)
 
-            # G-factor in frames plot
+            # ΔFc/ΔDD in ROIs
             ax1 = mpl_fig.add_subplot(122)
             ax1.spines['top'].set_visible(False)
             ax1.spines['right'].set_visible(False)
-            ax1.errorbar(output_df['frame_n'], output_df['g_val'],
+            ax1.boxplot(y_arr/x_arr, positions=[1], widths=0.5)
+            ax1.scatter(np.full(len(y_arr), 1), y_arr/x_arr, s=35, alpha=0.25, color='blue')
+            ax1.errorbar([1], output_df['g_val'],
                     yerr = 1.96 * output_df['g_err'],
-                    fmt ='-o', capsize=0,
+                    fmt ='-o', capsize=5,
                     alpha=0.75, color='blue')
             ax1.grid(color='grey', linewidth=.25)
-            ax1.set_xlabel('Frame')
-            ax1.set_ylabel('G-factor')
-            ax1.set_title(f'All low FRET frames, 95% CI', fontsize=10)
-            plt.suptitle(f'{output_name} G-factor estimation, high FRET frame {hight_frame_for_estimation}')
+            ax1.set_xticklabels([''])
+            ax1.set_xlabel('')
+            ax1.set_ylabel('ΔFc/ΔDD')
+            ax1.set_title(f'ROIs ΔFc/ΔDD and 95% CI for G', fontsize=10)
+            plt.suptitle(f'{output_name} G-factor estimation', fontsize=10)
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
 
         @thread_worker(connect={'returned':_save_g_data})
@@ -369,15 +373,18 @@ def g_calc(viewer: Viewer,
                 show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
 
             g_estimator = e_fret.G_factor_estimation(mask=roi_mask,
-                                                     h_dd_img=DD_img_high_FRET.data[hight_frame_for_estimation],
-                                                     h_da_img=DA_img_high_FRET.data[hight_frame_for_estimation],
-                                                     h_aa_img=AA_img_high_FRET.data[hight_frame_for_estimation],
-                                                     l_dd_img=DD_img_low_FRET.data,
-                                                     l_da_img=DA_img_low_FRET.data,
-                                                     l_aa_img=AA_img_low_FRET.data,
+                                                     h_dd_img=DD_img_high_FRET.data[0],
+                                                     h_da_img=DA_img_high_FRET.data[0],
+                                                     h_aa_img=AA_img_high_FRET.data[0],
+                                                     l_dd_img=DD_img_low_FRET.data[0],
+                                                     l_da_img=DA_img_low_FRET.data[0],
+                                                     l_aa_img=AA_img_low_FRET.data[0],
                                                      a_val=a,
                                                      d_val=d)
-            coef = g_estimator.estimate_g()
+            if estimation_method == 'Zal':
+                coef = g_estimator.estimate_g_zal()
+            elif estimation_method == 'Chen':
+                coef = g_estimator.estimate_g_chen()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:
@@ -391,7 +398,7 @@ def g_calc(viewer: Viewer,
 @magic_factory(call_button='Estimate E-FRET',
                output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
 def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.0136, d:float=0.2646, G:float=2.792,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.792
+               a:float=0.0136, d:float=0.2646, G:float=2.99,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.992
                output_type:str='Fc',
                save_normalized:bool=True):
     if input is not None:

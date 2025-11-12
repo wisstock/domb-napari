@@ -4,7 +4,8 @@ It's standalone module for domb-napari plugin and it could be used independently
 
 References
 ----------
-Zal and Gascoigne, 2004. "Photobleaching-corrected FRET efficiency imaging of live cells". doi: 10.1529/biophysj.103.022087
+- Zal and Gascoigne, 2004. "Photobleaching-corrected FRET efficiency imaging of live cells". doi: 10.1529/biophysj.103.022087
+- Chen et al., 2006. "Measurement of FRET efficiency and ratio of donor to acceptor concentration in living cells". doi: 10.1529/biophysj.106.088773
 
 """
 import numpy as np
@@ -33,16 +34,18 @@ def _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
     fc_img = _Fc_calc(dd_img, da_img, aa_img, a_val, d_val)
     E_app_img = np.zeros_like(fc_img)
 
-    epsilon = 1e-12
+    epsilon = 1e-13
 
     for i in prange(fc_img.shape[0]):
         DD_frame = dd_img[i]
-
         Fc_frame = fc_img[i]
-        R_frame = Fc_frame / (DD_frame + epsilon)
-        RG_frame = R_frame + G_val
 
-        E_app_frame = R_frame / (RG_frame + epsilon)
+        Fc_G_frame = Fc_frame / G_val
+        E_app_frame = Fc_G_frame / (DD_frame + Fc_G_frame + epsilon)
+
+        # R_frame = Fc_frame / (DD_frame + epsilon)
+        # RG_frame = R_frame + G_val
+        # E_app_frame = R_frame / (RG_frame + epsilon)
                             
         E_app_img[i] = np.clip(E_app_frame, a_min=0, a_max=None)
     return E_app_img
@@ -267,70 +270,129 @@ class G_factor_estimation():
                  a_val=None, d_val=None):
         if any(img is None for img in [h_dd_img, h_da_img, h_aa_img,
                                        l_dd_img, l_da_img, l_aa_img]):
-            raise ValueError("All spectral channels must be provided!")
-        if not np.all([h_dd_img.ndim == 2, h_da_img.ndim == 2, h_aa_img.ndim == 2]):
-            raise ValueError('Incorrect input pre-image shape, should be 2D frame!')
-        if not np.all([l_dd_img.ndim == 3, l_da_img.ndim == 3, l_aa_img.ndim == 3]):
-            raise ValueError('Incorrect input post-image shape, should be 3D time series!')
+            raise ValueError("All input images must be provided!")
+        if not np.all([h_dd_img.ndim == 2, h_da_img.ndim == 2, h_aa_img.ndim == 2,
+                       l_dd_img.ndim == 2, l_da_img.ndim == 2, l_aa_img.ndim == 2]):
+            raise ValueError('Incorrect input image shape, must be 2D image!')
+            
+        # add new axis for time dimension consistency
+        self.h_dd_img = h_dd_img[np.newaxis, ...]
+        self.h_da_img = h_da_img[np.newaxis, ...]
+        self.h_aa_img = h_aa_img[np.newaxis, ...]
+        self.l_dd_img = l_dd_img[np.newaxis, ...]
+        self.l_da_img = l_da_img[np.newaxis, ...]
+        self.l_aa_img = l_aa_img[np.newaxis, ...]
 
-        self.h_dd_img = h_dd_img
-        self.h_da_img = h_da_img
-        self.h_aa_img = h_aa_img
-        self.l_dd_img = l_dd_img
-        self.l_da_img = l_da_img
-        self.l_aa_img = l_aa_img
+        print(self.h_dd_img.shape, self.l_dd_img.shape)
+
         self.a_val = a_val
         self.d_val = d_val
         self.mask = mask
 
-    def estimate_g(self):
-        """ Estimate G factor of imaging system
+    def estimate_g_zal(self):
+        """ Estimate G factor of imaging system using Zal and Gascoigne method
+        based on acceptor photobleaching
 
         Returns
         -------
         g_df: pd.DataFrame
             DataFrame with estimated G factors for all post frames
         fit_arr: np.ndarray
-            Array with fit data for all post frames [(dd_delta, fc_delta), ...]
+            Array with fit data (DD_arr_delta, Fc_arr_delta)
 
         """
-        g_df = pd.DataFrame(columns=['frame_n', 'g_val', 'g_p', 'g_err',
-                                     'g_i', 'g_i_err', 'g_r^2'])
-
+        # sensitized fluorescence images
         Fc_img_h = _Fc_calc(dd_img=self.h_dd_img,
                               da_img=self.h_da_img,
                               aa_img=self.h_aa_img,
                               a_val=self.a_val, d_val=self.d_val)
-        Fc_img_h = Fc_img_h[np.newaxis, ...]
         Fc_img_l = _Fc_calc(dd_img=self.l_dd_img,
                                da_img=self.l_da_img,
                                aa_img=self.l_aa_img,
                                a_val=self.a_val, d_val=self.d_val)
+        
+        # profiles extraction
         Fc_arr_h = utils.labels_to_profiles(self.mask, Fc_img_h)
         Fc_arr_l = utils.labels_to_profiles(self.mask, Fc_img_l)
         Fc_arr_delta = Fc_arr_h - Fc_arr_l
-        Fc_arr_delta = Fc_arr_delta.T
 
-        DD_arr_h = utils.labels_to_profiles(self.mask, self.h_dd_img[np.newaxis, ...])  # add axis for shape consistency
+        DD_arr_h = utils.labels_to_profiles(self.mask, self.h_dd_img)
         DD_arr_l = utils.labels_to_profiles(self.mask, self.l_dd_img)
         DD_arr_delta = DD_arr_l - DD_arr_h
-        DD_arr_delta = DD_arr_delta.T
 
-        fit_arr = []
-        i = 0
-        for fc, dd in zip(Fc_arr_delta, DD_arr_delta):
-            fit_arr.append((dd, fc))
-            g_fit = stats.linregress(dd, fc)
-            row_dict =  {'frame_n': i,
-                         'g_val': g_fit.slope,
-                         'g_p': "{:.5f}".format(g_fit.pvalue),
-                         'g_err': g_fit.stderr,
-                         'g_i': g_fit.intercept,
-                         'g_i_err': g_fit.intercept_stderr,
-                         'g_r^2': g_fit.rvalue}      
-            row_df = pd.DataFrame(row_dict, index=[0])
-            g_df = pd.concat([g_df.astype(row_df.dtypes),
-                                row_df.astype(g_df.dtypes)],
-                                ignore_index=True)
-            i += 1
-        return (g_df, np.array(fit_arr))
+        g_fit = stats.linregress(DD_arr_delta[:,0],
+                                 Fc_arr_delta[:,0])
+        
+        g_df = pd.DataFrame(columns=['g_val', 'g_p', 'g_err',
+                                     'g_i', 'g_i_err', 'g_r^2'])
+        row_dict =  {'g_val': g_fit.slope,
+                     'g_p': "{:.5f}".format(g_fit.pvalue),
+                     'g_err': g_fit.stderr,
+                     'g_i': g_fit.intercept,
+                     'g_i_err': g_fit.intercept_stderr,
+                     'g_r^2': g_fit.rvalue}      
+        row_df = pd.DataFrame(row_dict, index=[0])
+        g_df = pd.concat([g_df.astype(row_df.dtypes),
+                            row_df.astype(g_df.dtypes)],
+                            ignore_index=True)
+        return (g_df, np.array([DD_arr_delta, Fc_arr_delta]))
+    
+    def estimate_g_chen(self):
+        """ Estimate G factor of imaging system using Chen et al. method
+        based on different FRET levels
+
+        Returns
+        -------
+        g_df: pd.DataFrame
+            DataFrame with estimated G factors for all post frames
+        fit_arr: np.ndarray
+            Array with fit data for all post frames [(dd_prm, da_prm), ...]
+
+        """
+        # sensitized fluorescence images
+        Fc_img_h = _Fc_calc(dd_img=self.h_dd_img,
+                              da_img=self.h_da_img,
+                              aa_img=self.h_aa_img,
+                              a_val=self.a_val, d_val=self.d_val)
+        Fc_img_l = _Fc_calc(dd_img=self.l_dd_img,
+                               da_img=self.l_da_img,
+                               aa_img=self.l_aa_img,
+                               a_val=self.a_val, d_val=self.d_val)
+        
+        # profiles extraction
+        Fc_arr_h = utils.labels_to_profiles(self.mask, Fc_img_h)
+        Fc_arr_l = utils.labels_to_profiles(self.mask, Fc_img_l)
+        
+        AA_arr_h = utils.labels_to_profiles(self.mask, self.h_aa_img)
+        AA_arr_l = utils.labels_to_profiles(self.mask, self.l_aa_img)
+        
+        DD_arr_h = utils.labels_to_profiles(self.mask, self.h_dd_img)
+        DD_arr_l = utils.labels_to_profiles(self.mask, self.l_dd_img)
+
+        # relations calculation
+        Fc_AA_arr_h = Fc_arr_h / AA_arr_h
+        Fc_AA_arr_l = Fc_arr_l / AA_arr_l
+
+        DD_AA_arr_h = DD_arr_h / AA_arr_h
+        DD_AA_arr_l = DD_arr_l / AA_arr_l
+
+        Fc_DD_arr_delta = Fc_AA_arr_h - Fc_AA_arr_l
+        DD_AA_arr_delta = DD_AA_arr_l - DD_AA_arr_h
+        
+        # linear fit for G factor estimation
+        g_fit = stats.linregress(Fc_DD_arr_delta[:,0],
+                                 DD_AA_arr_delta[:,0])
+
+        g_df = pd.DataFrame(columns=['g_val', 'g_p', 'g_err',
+                                     'g_i', 'g_i_err', 'g_r^2'])
+        row_dict =  {'g_val': g_fit.slope,
+                     'g_p': "{:.5f}".format(g_fit.pvalue),
+                     'g_err': g_fit.stderr,
+                     'g_i': g_fit.intercept,
+                     'g_i_err': g_fit.intercept_stderr,
+                     'g_r^2': g_fit.rvalue}      
+        row_df = pd.DataFrame(row_dict, index=[0])
+        g_df = pd.concat([g_df.astype(row_df.dtypes),
+                            row_df.astype(g_df.dtypes)],
+                            ignore_index=True)
+        return (g_df, np.array([Fc_DD_arr_delta, DD_AA_arr_delta]))
