@@ -280,12 +280,14 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         _cross_calc()
 
 
-@magic_factory(call_button='Estimate G-factor',  # estimation_method={"choices": ['Zal', 'Chen']}
+@magic_factory(call_button='Estimate G-factor',
+               estimation_method={"choices": ['Zal', 'Chen']},
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
            DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
            DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
-           mask: Labels,  # estimation_method:str='Zal'
+           mask: Labels,
+           estimation_method:str='Zal',
            segment_mask:bool=True,
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
            saving_path:pathlib.Path = os.getcwd()):
@@ -379,11 +381,11 @@ def g_calc(viewer: Viewer,
                                                      l_aa_img=AA_img_low_FRET.data[0],
                                                      a_val=a,
                                                      d_val=d)
-            coef = g_estimator.estimate_g_zal()
-            # if estimation_method == 'Zal':
-            #     coef = g_estimator.estimate_g_zal()
-            # elif estimation_method == 'Chen':
-            #     coef = g_estimator.estimate_g_chen()
+            # coef = g_estimator.estimate_g_zal()
+            if estimation_method == 'Zal':
+                coef = g_estimator.estimate_g_zal()
+            elif estimation_method == 'Chen':
+                coef = g_estimator.estimate_g_chen()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:
@@ -1034,7 +1036,6 @@ def save_df(img:Image, labels:Labels,
         if save_ROIs_distances:
             col_list = ['id', 'lab_id', 'roi', 'dist', 'index', 'time', 'abs_int', 'dF_int', 'dF/F0_int', 'base']
             tip_position_img = np.ones_like(input_img[0], dtype=bool)
-            print(tip_position_img.shape)
             if custom_stim_position:
                 try:
                     tip_x, tip_y = int(stim_position.data[0][-2]), int(stim_position.data[0][-1])  # for time series
