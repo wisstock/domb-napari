@@ -714,10 +714,10 @@ def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
             
 
 @magic_factory(call_button='Build Profiles',
-               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},)
+               values_mode={"choices": ['ΔF', 'ΔF/F0', 'abs.']},)
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=1.0,
-                        values_mode='ΔF/F0',
+                        values_mode='ΔF',
                         use_simple_baseline:bool=True,
                         ΔF_win:int=4,
                         Dietrich_std:float=1.25):
@@ -748,7 +748,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                                                input_img=input_img)
 
         profile_to_plot = []
-        if values_mode == 'abs.':
+        if all([values_mode == 'abs.', use_simple_baseline]):
             profile_to_plot = np.round(profile_abs, decimals=4)
         else:
             profile_to_plot = fun_delta(profile_abs,
