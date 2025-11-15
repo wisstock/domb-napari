@@ -771,19 +771,19 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         ax.grid(color='grey', linewidth=.25)
         ax.set_xlabel('Time, s')
         ax.set_ylabel(ylab)
-        plt.title(f'{img.name} ROIs profiles, {values_mode} mode, labels: {labels.name}')
+        plt.title(f'{img.name} ROIs profiles, {values_mode} mode, labels: {labels.name}, simple baseline: {use_simple_baseline}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='ROIs Prof.')
 
 
 @magic_factory(call_button='Build Profiles',
                profiles_num={"choices": ['1', '2', '3']},
-               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
+               values_mode={"choices": ['ΔF', 'ΔF/F0', 'abs.']},
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Image,
                               lab:Labels,
                               profiles_num:str='1',
                               time_scale:float=1.0,
-                              values_mode:str='ΔF/F0',
+                              values_mode:str='ΔF',
                               use_simple_baseline:bool=True,
                               ΔF_win:int=4,
                               Dietrich_std:float=1.25,
@@ -829,7 +829,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                                   num=input_img_0.shape[0])
         profile_abs_0 = utils.labels_to_profiles(input_label=input_labels,
                                                  input_img=input_img_0)
-        if values_mode == 'abs.':
+        if all([values_mode == 'abs.', use_simple_baseline]):
             selected_profile_0 = np.round(profile_abs_0, decimals=4)
         else:
             selected_profile_0 = fun_delta(profile_abs_0,
@@ -843,7 +843,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                                     num=input_img_1.shape[0])
             profile_abs_1 = utils.labels_to_profiles(input_label=input_labels,
                                                      input_img=input_img_1)
-            if values_mode == 'abs.':
+            if all([values_mode == 'abs.', use_simple_baseline]):
                 selected_profile_1 = np.round(profile_abs_1, decimals=4)
             else:
                 selected_profile_1 = fun_delta(profile_abs_1,
@@ -857,7 +857,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                                     num=input_img_2.shape[0])
             profile_abs_2 = utils.labels_to_profiles(input_label=input_labels,
                                                      input_img=input_img_2)
-            if values_mode == 'abs.':
+            if all([values_mode == 'abs.', use_simple_baseline]):
                 selected_profile_2 = np.round(profile_abs_2, decimals=4)
             else:
                 selected_profile_2 = fun_delta(profile_abs_2,
@@ -891,19 +891,19 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                         fmt ='-o', capsize=2, label=img_2.name,
                         alpha=0.75, color='blue')
         plt.legend()
-        plt.title(f'{lab.name}, method {stat_method}')
+        plt.title(f'{lab.name}, method {stat_method}, simple baseline: {use_simple_baseline}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Img Stat Prof.')
 
 
 @magic_factory(call_button='Build Profiles',
                labels_num={"choices": ['1', '2', '3']},
-               values_mode={"choices": ['abs.', 'ΔF', 'ΔF/F0']},
+               values_mode={"choices": ['ΔF', 'ΔF/F0', 'abs.']},
                stat_method={"choices": ['se', 'iqr', 'ci']},)
 def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         lab_0:Labels, lab_1:Labels, lab_2:Labels,
                         time_scale:float=1.0,
                         labels_num:str='1',
-                        values_mode:str='ΔF/F0',
+                        values_mode:str='ΔF',
                         use_simple_baseline:bool=True,
                         ΔF_win:int=4,
                         Dietrich_std:float=1.25,
@@ -949,7 +949,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         input_lab_0 = lab_0.data
         profile_abs_0 = utils.labels_to_profiles(input_label=input_lab_0,
                                                  input_img=input_img)
-        if values_mode == 'abs.':
+        if all([values_mode == 'abs.', use_simple_baseline]):
             selected_profile_0 = np.round(profile_abs_0, decimals=4)
         else:
             selected_profile_0 = fun_delta(profile_abs_0,
@@ -961,7 +961,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
             input_lab_1 = lab_1.data
             profile_abs_1 = utils.labels_to_profiles(input_label=input_lab_1,
                                             input_img=input_img)
-            if values_mode == 'abs.':
+            if all([values_mode == 'abs.', use_simple_baseline]):
                 selected_profile_1 = np.round(profile_abs_1, decimals=4)
             else:
                 selected_profile_1 = fun_delta(profile_abs_1,
@@ -973,7 +973,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
             input_lab_2 = lab_2.data
             profile_abs_2 = utils.labels_to_profiles(input_label=input_lab_2,
                                             input_img=input_img)
-            if values_mode == 'abs.':
+            if all([values_mode == 'abs.', use_simple_baseline]):
                 selected_profile_2 = np.round(profile_abs_2, decimals=4)
             else:
                 selected_profile_2 = fun_delta(profile_abs_2,
@@ -1007,11 +1007,11 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                         fmt ='-o', capsize=2, label=lab_2.name,
                         alpha=0.75, color='blue')
         plt.legend()
-        plt.title(f'{img.name}, method {stat_method}')
+        plt.title(f'{img.name}, method {stat_method}, simple baseline: {use_simple_baseline}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Lab Stat Prof.')
 
 
-@magic_factory(call_button='Build Profiles',
+@magic_factory(call_button='Save Data',
                saving_path={'mode': 'd'})
 def save_df(img:Image, labels:Labels,
             time_scale:float=1.0,
@@ -1067,14 +1067,14 @@ def save_df(img:Image, labels:Labels,
         profile_dF_F0 = utils.delta_prof_simple(profile_abs, mode='ΔF/F0',
                                                 win_size=ΔF_win)
         # Dietrich baseline calc
-        profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs',
+        profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs.',
                                                    win_size=Dietrich_win, stds=Dietrich_std)
         profile_dF_base = utils.delta_prof_pybase(profile_abs, mode='ΔF',
                                                   win_size=Dietrich_win, stds=Dietrich_std)
         profile_dF_F0_base = utils.delta_prof_pybase(profile_abs, mode='ΔF/F0',
                                                      win_size=Dietrich_win, stds=Dietrich_std)
         end = time.perf_counter()
-        show_info(f'{img.name}: profiles calculated in {end-start:.2f} s')
+        show_info(f'{img.name}: profiles calculated in {end-start:.2f}s')
 
         output_df = pd.DataFrame(columns=col_list)
         # simple baseline saving

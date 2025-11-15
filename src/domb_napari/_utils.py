@@ -341,7 +341,7 @@ def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
         elif mode == 'ΔF':
             output_prof = prof - prof_baseline
         elif mode == 'abs.':
-            output_prof = prof - prof_baseline + np.max(prof_baseline)
+            output_prof = prof - prof_baseline + np.mean(prof_baseline[0:2])
         output_arr.append(output_prof)
     return np.asarray(output_arr)
 

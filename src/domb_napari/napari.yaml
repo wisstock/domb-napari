@@ -6,6 +6,7 @@ categories:
   - Segmentation
   - Utilities
 
+
 contributions:
   commands:
     - id: domb-napari.split_channels_widget
@@ -50,7 +51,8 @@ contributions:
     - id: domb-napari.rel_series_widget
       title: ΔF series
       python_name: domb_napari._widget:rel_series
-  
+
+
   widgets:
     - command: domb-napari.dw_registration_widget
       display_name: Dual-view stack registration
@@ -81,6 +83,7 @@ contributions:
     - command: domb-napari.save_df_widget
       display_name: Save Data Frame
 
+
   menus:
     napari/layers/visualize:
       - submenu: profiles
@@ -88,21 +91,23 @@ contributions:
       - command: domb-napari.labels_profiles_set_widget
       - command: domb-napari.labels_multi_profile_widget
       - command: domb-napari.multi_labels_profile_widget
+    
     napari/layers/data:
       - submenu: preprocessing
       - command: domb-napari.save_df_widget
     preprocessing:
       - command: domb-napari.split_channels_widget
       - command: domb-napari.dw_registration_widget
-    napari/layers/transform:
+
+    napari/layers/measure:
       - command: domb-napari.der_series_widget
       - command: domb-napari.rel_series_widget
-    napari/layers/measure:
       - submenu: e-fret
     e-fret:
       - command: domb-napari.e_app_widget
       - command: domb-napari.g_calc_widget
       - command: domb-napari.cross_calc_widget
+    
     napari/layers/segment:
       - command: domb-napari.dot_mask_widget
       - command: domb-napari.up_mask_calc_widget
