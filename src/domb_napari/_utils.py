@@ -166,7 +166,6 @@ def back_substr(input_img:np.ndarray, percentile:float=1.0):
     return corrected_img.astype(input_type)
 
 
-# no JIT
 def get_bright_channel(input_img:np.ndarray):
     """ Get index of the brightest channel from a multi-channel image series.
 
@@ -187,7 +186,6 @@ def get_bright_channel(input_img:np.ndarray):
     return bright_idx
 
 
-# no JIT
 def mask_segmentation(input_mask:np.ndarray, fragment_num:int=30):
     """ Segmentation of the input binary mask by distance transform and watershed algorithm.
 
@@ -303,7 +301,6 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
     return np.asarray(prof_arr, dtype=np.float32)
 
 
-# no JIT
 def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
                       mode:str='ΔF', **kwargs):
     """ Computes the baseline of each profile in the input array using the Dietrich's method.
@@ -346,7 +343,6 @@ def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
     return np.asarray(output_arr)
 
 
-# no JIT
 def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='ΔF', **kwargs):
     """ Computes the baseline of each profile in the input array using a baseline estimation by the begingng of the profiles.
     Parameters

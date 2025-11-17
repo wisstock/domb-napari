@@ -281,7 +281,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
 
 @magic_factory(call_button='Estimate G-factor',
-               estimation_method={"choices": ['Zal', 'Chen']},
+               estimation_method={"choices": ['Zal', 'Chen', 'Butz']},
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
            DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
@@ -386,6 +386,8 @@ def g_calc(viewer: Viewer,
                 coef = g_estimator.estimate_g_zal()
             elif estimation_method == 'Chen':
                 coef = g_estimator.estimate_g_chen()
+            elif estimation_method == 'Butz':
+                coef = g_estimator.estimate_g_butz()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:

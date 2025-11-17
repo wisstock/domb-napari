@@ -1,11 +1,13 @@
-""" E-FRET calculations for napari plugin.
+""" 3³/E-FRET
 
-It's standalone module for domb-napari plugin and it could be used independently for E-FRET calibration and estimation.
+Stand-alone module for domb-napari plugin and it could be used independently for 3³/E-FRET calibration and estimation.
 
 References
 ----------
+- Erickson et al., 2001. "Preassociation of calmodulin with voltage-gated Ca(2+) channels revealed by FRET in single living cells ". doi: 10.1016/s0896-6273(01)00438-x.
 - Zal and Gascoigne, 2004. "Photobleaching-corrected FRET efficiency imaging of live cells". doi: 10.1529/biophysj.103.022087
 - Chen et al., 2006. "Measurement of FRET efficiency and ratio of donor to acceptor concentration in living cells". doi: 10.1529/biophysj.106.088773
+- Butz et al., 2016, "Quantifying macromolecular interactions in living cells using FRET two-hybrid assays". doi:10.1038/nprot.2016.128
 
 """
 import numpy as np
@@ -54,6 +56,12 @@ def _Ecor_calc(dd_img, da_img, aa_img, a_val, d_val, G_val, corr_img):
     E_app_img = _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val)
     E_cor_img = E_app_img * corr_img
     return E_cor_img
+
+# def _FR_calc(dd_imgm da_img, aa_img, a_val, d_val, R_val):
+#     """ FRET ratio calculation
+    
+#     """
+#     pass
 
 class E_FRET():
     """ Class for estimating FRET efficiency in image time series
@@ -391,6 +399,65 @@ class GFactorEstimation():
                             ignore_index=True)
         return (g_df, np.array([Fc_DD_arr_delta, DD_AA_arr_delta]))
     
+    def estimate_g_butz(self):
+        """ Estimate G factor of imaging system using Butz et al. method
+        based on different FRET levels
+
+        Returns
+        -------
+        g_df: pd.DataFrame
+            DataFrame with estimated G factors for all post frames
+        fit_arr: np.ndarray
+            Array with fit data for all post frames [(aa_prm, da_prm), ...]
+
+        """
+        # sensitized fluorescence images
+        Fc_img_h = _Fc_calc(dd_img=self.h_dd_img,
+                            da_img=self.h_da_img,
+                            aa_img=self.h_aa_img,
+                            a_val=self.a_val, d_val=self.d_val)
+        Fc_img_l = _Fc_calc(dd_img=self.l_dd_img,
+                            da_img=self.l_da_img,
+                            aa_img=self.l_aa_img,
+                            a_val=self.a_val, d_val=self.d_val)
+        
+        # profiles extraction
+        Fc_arr_h = utils.labels_to_profiles(self.mask, Fc_img_h)
+        Fc_arr_l = utils.labels_to_profiles(self.mask, Fc_img_l)
+        Fc_arr = np.concatenate((Fc_arr_h, Fc_arr_l), axis=0)
+        
+        AA_arr_h = utils.labels_to_profiles(self.mask, self.h_aa_img)
+        AA_arr_l = utils.labels_to_profiles(self.mask, self.l_aa_img)
+        AA_arr = np.concatenate((AA_arr_h, AA_arr_l), axis=0)
+
+        DD_arr_h = utils.labels_to_profiles(self.mask, self.h_dd_img)
+        DD_arr_l = utils.labels_to_profiles(self.mask, self.l_dd_img)
+        DD_arr = np.concatenate((DD_arr_h, DD_arr_l), axis=0)
+
+        print(Fc_arr.shape, AA_arr.shape, DD_arr.shape)
+
+        Fc_AA_arr = (Fc_arr / AA_arr) * (1 / self.a_val)
+        DD_AA_arr = (DD_arr / AA_arr) * (self.d_val / self.a_val)
+
+        # linear fit for G factor estimation
+        g_fit = stats.linregress(DD_AA_arr[:,0],
+                                 Fc_AA_arr[:,0])
+        
+        g_df = pd.DataFrame(columns=['g_val', 'g_p', 'g_err',
+                                     'r_val', 'r_err', 'g_r^2'])
+        row_dict =  {'g_val': g_fit.slope,
+                     'g_p': "{:.5f}".format(g_fit.pvalue),
+                     'g_err': g_fit.stderr,
+                     'r_val': g_fit.intercept,
+                     'r_err': g_fit.intercept_stderr,
+                     'g_r^2': g_fit.rvalue}      
+        row_df = pd.DataFrame(row_dict, index=[0])
+        g_df = pd.concat([g_df.astype(row_df.dtypes),
+                            row_df.astype(g_df.dtypes)],
+                            ignore_index=True)
+        
+        return (g_df, np.array([DD_AA_arr, Fc_AA_arr]))
+
 
 class KFactorEstimation():
     """ Class for estimating k factor for donor/acceptor ratio estimation
