@@ -280,18 +280,47 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         _cross_calc()
 
 
-@magic_factory(call_button='Estimate G-factor',
-               estimation_method={"choices": ['Zal', 'Chen']},
-               saving_path={'mode': 'd'})
-def g_calc(viewer: Viewer,
-           DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
-           DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
-           mask: Labels,
-           mask_low: Labels=None,
-           estimation_method:str='Zal',
+def _g_calc_init(widget):
+    """ G-factor estimation widget initialization function for dynamic interface update
+
+    """
+    options_map = {'Zal': ['DD_img_high_FRET', 'DA_img_high_FRET',
+                           'AA_img_high_FRET', 'DD_img_low_FRET',
+                           'DA_img_low_FRET', 'AA_img_low_FRET', 'mask',
+                           'segment_mask', 'a', 'd', 'saving_path'],
+                   'Chen': ['DD_img_high_FRET', 'DA_img_high_FRET',
+                           'AA_img_high_FRET', 'DD_img_low_FRET',
+                           'DA_img_low_FRET', 'AA_img_low_FRET',
+                           'mask_high', 'mask_low',
+                           'a', 'd', 'saving_path']}
+    all_dynamic_widgets = [name for params in options_map.values() for name in params]
+
+    def update_interface(method_name):
+        for name in all_dynamic_widgets:
+            getattr(widget, name).visible = False
+            
+        active_widgets = options_map.get(method_name, [])
+        for name in active_widgets:
+            getattr(widget, name).visible = True
+    widget.estimation_method.changed.connect(update_interface)
+
+    update_interface(widget.estimation_method.value)
+
+@magic_factory(widget_init=_g_calc_init,
+               estimation_method={"choices": ["Zal", "Chen"], "label": "Estimation Method"},)
+def g_calc(viewer: Viewer, estimation_method:str='Zal',
+           DD_img_high_FRET:Image=None, DA_img_high_FRET:Image=None, AA_img_high_FRET:Image=None,
+           DD_img_low_FRET:Image=None, DA_img_low_FRET:Image=None, AA_img_low_FRET:Image=None,
+           # optins for Zal
+           mask: Labels=None,
            segment_mask:bool=True,
+           # options for Chen
+           mask_high: Labels=None,
+           mask_low: Labels=None,
+           # common options
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
            saving_path:pathlib.Path = os.getcwd()):
+
     if input is not None:
         if not np.all([DD_img_low_FRET.data.ndim == 3, DA_img_low_FRET.data.ndim == 3, AA_img_low_FRET.data.ndim == 3]):
             raise ValueError('Incorrect input low FRET image shape!')
@@ -401,31 +430,41 @@ def g_calc(viewer: Viewer,
             start = time.perf_counter()
             show_info(f'G-factor estimation started, method {estimation_method}, a={a}, d={d}')
 
-            if segment_mask:
-                img_mask = mask.data != 0
-                img_mask_area = np.sum(img_mask)
-                fragment_area = img_mask_area // 30
-                if fragment_area < 300:
-                    raise ValueError('The mask area is too small for segmentation, please select larger area!')
-                roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
-            else:
-                roi_mask = mask.data
-                show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
-
-            g_estimator = e_fret.GFactorEstimation(mask=roi_mask,
-                                                   mask_l=mask_low.data,
-                                                   h_dd_img=DD_img_high_FRET.data[0],
-                                                   h_da_img=DA_img_high_FRET.data[0],
-                                                   h_aa_img=AA_img_high_FRET.data[0],
-                                                   l_dd_img=DD_img_low_FRET.data[0],
-                                                   l_da_img=DA_img_low_FRET.data[0],
-                                                   l_aa_img=AA_img_low_FRET.data[0],
-                                                   a_val=a,
-                                                   d_val=d)
             if estimation_method == 'Zal':
+                if segment_mask:
+                    img_mask = mask.data != 0
+                    img_mask_area = np.sum(img_mask)
+                    fragment_area = img_mask_area // 30
+                    if fragment_area < 300:
+                        raise ValueError('The mask area is too small for segmentation, please select larger area!')
+                    roi_mask = utils.mask_segmentation(img_mask, fragment_num=30)
+                else:
+                    roi_mask = mask.data
+                    show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
+
+                g_estimator = e_fret.GFactorEstimation(mask=roi_mask,
+                                                    mask_l=mask_low.data,
+                                                    h_dd_img=DD_img_high_FRET.data[0],
+                                                    h_da_img=DA_img_high_FRET.data[0],
+                                                    h_aa_img=AA_img_high_FRET.data[0],
+                                                    l_dd_img=DD_img_low_FRET.data[0],
+                                                    l_da_img=DA_img_low_FRET.data[0],
+                                                    l_aa_img=AA_img_low_FRET.data[0],
+                                                    a_val=a,
+                                                    d_val=d)
                 coef = g_estimator.estimate_g_zal()
             elif estimation_method == 'Chen':
-                coef = g_estimator.estimate_g_chen()
+                g_estimator = e_fret.GFactorEstimation(mask=mask_high.data,
+                                                    mask_l=mask_low.data,
+                                                    h_dd_img=DD_img_high_FRET.data[0],
+                                                    h_da_img=DA_img_high_FRET.data[0],
+                                                    h_aa_img=AA_img_high_FRET.data[0],
+                                                    l_dd_img=DD_img_low_FRET.data[0],
+                                                    l_da_img=DA_img_low_FRET.data[0],
+                                                    l_aa_img=AA_img_low_FRET.data[0],
+                                                    a_val=a,
+                                                    d_val=d)
+                coef = g_estimator.estimate_g_zal()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:
@@ -434,6 +473,7 @@ def g_calc(viewer: Viewer,
                 return coef
 
         _g_calc()
+
 
 
 @magic_factory(call_button='Estimate E-FRET',
