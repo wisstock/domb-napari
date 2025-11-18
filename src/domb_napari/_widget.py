@@ -261,7 +261,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
             ax.grid(color='grey', linewidth=.25)
             ax.set_xlabel(axis_lab_dict[presented_fluorophore][0])
             ax.set_ylabel(axis_lab_dict[presented_fluorophore][1])
-            plt.title(f'{output_name}, esimation of {axis_lab_dict[presented_fluorophore][2]}')
+            plt.title(f'{output_name}, esimation of {axis_lab_dict[presented_fluorophore][2]}, slopel {last_slope:.3f}, intercept {last_intercept:.3f}, r² {last_r2:.2f}')
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Cross-talk estimation')
 
         @thread_worker(connect={'returned':_save_cross_data})
@@ -281,12 +281,13 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 
 
 @magic_factory(call_button='Estimate G-factor',
-               estimation_method={"choices": ['Zal', 'Chen', 'Butz']},
+               estimation_method={"choices": ['Zal', 'Chen']},
                saving_path={'mode': 'd'})
 def g_calc(viewer: Viewer,
            DD_img_high_FRET:Image, DA_img_high_FRET:Image, AA_img_high_FRET:Image,
            DD_img_low_FRET:Image, DA_img_low_FRET:Image, AA_img_low_FRET:Image,
            mask: Labels,
+           mask_low: Labels=None,
            estimation_method:str='Zal',
            segment_mask:bool=True,
            a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
@@ -315,51 +316,90 @@ def g_calc(viewer: Viewer,
                     new_labels = viewer.add_labels(output[-1], name=lab_name, opacity=0.5)
                     new_labels.contour = 0
 
-            # regression line for 1st frame
-            x_arr, y_arr = output[1][0], output[1][1]
-            fit_slope = output_df.iloc[0,1]
-            fit_intercept = output_df.iloc[0,4]
-            fit_r2 = output_df.iloc[0,6]
-            x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
-            y_line = fit_slope*x_line + fit_intercept
-            show_info(f'G-factor fit slope {fit_slope:.3f}, intercept {fit_intercept:.3f}, r² {fit_r2:.4f}')
-
             # plotting
-            mpl_fig = plt.figure()
+            axis_lab_dict = {'Zal':['ΔDD, a.u.','ΔFc, a.u.'],
+                             'Chen':['DD/AA','Fc/AA']}
             
-            # G-factor fit
-            ax0 = mpl_fig.add_subplot(121)
-            ax0.spines['top'].set_visible(False)
-            ax0.spines['right'].set_visible(False)
-            ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
-            ax0.plot(x_line, y_line, color='red', linewidth=2)
-            ax0.grid(color='grey', linewidth=.25)
-            ax0.set_xlabel('ΔDD, a.u.')
-            ax0.set_ylabel('ΔFc, a.u.')
-            ax0.set_title(f'Linear fit, G={fit_slope:.3f}', fontsize=10)
+            if estimation_method == 'Zal':
+                # regression line
+                x_arr, y_arr = output[1][0], output[1][1]
+                fit_slope = output_df.iloc[0,1]
+                fit_intercept = output_df.iloc[0,4]
+                fit_r2 = output_df.iloc[0,6]
+                x_line = np.linspace(np.min(x_arr), np.max(x_arr), 100)
+                y_line = fit_slope*x_line + fit_intercept
+                show_info(f'G-factor fit slope {fit_slope:.3f}, intercept {fit_intercept:.3f}, r² {fit_r2:.4f}')
 
-            # ΔFc/ΔDD in ROIs
-            ax1 = mpl_fig.add_subplot(122)
-            ax1.spines['top'].set_visible(False)
-            ax1.spines['right'].set_visible(False)
-            ax1.boxplot(y_arr/x_arr, positions=[1], widths=0.5)
-            ax1.scatter(np.full(len(y_arr), 1), y_arr/x_arr, s=35, alpha=0.25, color='blue')
-            ax1.errorbar([1], output_df['g_val'],
-                    yerr = 1.96 * output_df['g_err'],
-                    fmt ='-o', capsize=5,
-                    alpha=0.75, color='blue')
-            ax1.grid(color='grey', linewidth=.25)
-            ax1.set_xticklabels([''])
-            ax1.set_xlabel('')
-            ax1.set_ylabel('ΔFc/ΔDD')
-            ax1.set_title(f'ROIs ΔFc/ΔDD and 95% CI for G', fontsize=10)
-            plt.suptitle(f'{output_name} G-factor estimation', fontsize=10)
+                mpl_fig = plt.figure()
+                
+                # G-factor fit
+                ax0 = mpl_fig.add_subplot(121)
+                ax0.spines['top'].set_visible(False)
+                ax0.spines['right'].set_visible(False)
+                ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
+                ax0.plot(x_line, y_line, color='red', linewidth=2)
+                ax0.grid(color='grey', linewidth=.25)
+                ax0.set_xlabel(axis_lab_dict[estimation_method][0])
+                ax0.set_ylabel(axis_lab_dict[estimation_method][1])
+                ax0.set_title(f'Linear fit, G={fit_slope:.3f}', fontsize=10)
+
+                # ΔFc/ΔDD in ROIs
+                ax1 = mpl_fig.add_subplot(122)
+                ax1.spines['top'].set_visible(False)
+                ax1.spines['right'].set_visible(False)
+                ax1.boxplot(y_arr/x_arr, positions=[1], widths=0.5)
+                ax1.scatter(np.full(len(y_arr), 1), y_arr/x_arr, s=35, alpha=0.25, color='blue')
+                ax1.errorbar([1], output_df['g_val'],
+                        yerr = 1.96 * output_df['g_err'],
+                        fmt ='-o', capsize=5,
+                        alpha=0.75, color='blue')
+                ax1.grid(color='grey', linewidth=.25)
+                ax1.set_xticklabels([''])
+                ax1.set_xlabel('')
+                ax1.set_ylabel('ΔFc/ΔDD')
+                ax1.set_title(f'ROIs ΔFc/ΔDD and 95% CI for G', fontsize=10)
+                plt.suptitle(f'{output_name}, Zal and Gascoigne G estimation', fontsize=10)
+            
+            elif estimation_method == 'Chen':
+                # regression lined for high and low FRET images
+                x_line = np.linspace(np.min(output[1][0][0]), np.max(output[1][1][0]), 100)  # min of DD for low FRET and max of DD for high FRET
+
+                y_line_h = np.mean(output[1][0][0])*x_line + np.mean(output[1][0][1])
+                y_line_l = np.mean(output[1][1][0])*x_line + np.mean(output[1][1][1])
+                show_info(f'G-factor estimation {output_df.iloc[0,1]:.3f}, se {output_df.iloc[0,2]:.4f}')
+                
+                mpl_fig = plt.figure()
+                
+                # G-factor estimation
+                ax0 = mpl_fig.add_subplot(121)
+                ax0.spines['top'].set_visible(False)
+                ax0.spines['right'].set_visible(False)
+                ax0.plot(x_line, y_line_h, color='red', linewidth=2, label='High FRET image')
+                ax0.plot(x_line, y_line_l, color='blue', linewidth=2, label='Low FRET image')
+                ax0.grid(color='grey', linewidth=.25)
+                ax0.set_xlabel(axis_lab_dict[estimation_method][0])
+                ax0.set_ylabel(axis_lab_dict[estimation_method][1])
+                ax0.set_title(f'Inetersection position estimation, G={output_df.iloc[0,1]:.3f}', fontsize=10)
+                ax0.legend()
+
+                # ΔFc/ΔDD in ROIs
+                ax1 = mpl_fig.add_subplot(122)
+                ax1.spines['top'].set_visible(False)
+                ax1.spines['right'].set_visible(False)
+                ax1.boxplot([output[1][0][0], output[1][0][1], output[1][1][0], output[1][1][1]],
+                               tick_labels = ['DD/AA H', 'Fc/AA H', 'DD/AA L', 'Fc/AA L'])
+                ax1.grid(color='grey', linewidth=.25)
+                ax1.set_ylabel('I/AA')
+                ax1.set_title(f'ROIs I/AA', fontsize=10)
+
+                plt.suptitle(f'{output_name}, Chen et al. G estimation', fontsize=10)
+                
             viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='G-factor estimation')
 
         @thread_worker(connect={'returned':_save_g_data})
         def _g_calc():
             start = time.perf_counter()
-            show_info(f'G-factor estimation started, using a={a}, d={d}')
+            show_info(f'G-factor estimation started, method {estimation_method}, a={a}, d={d}')
 
             if segment_mask:
                 img_mask = mask.data != 0
@@ -373,21 +413,19 @@ def g_calc(viewer: Viewer,
                 show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
 
             g_estimator = e_fret.GFactorEstimation(mask=roi_mask,
-                                                     h_dd_img=DD_img_high_FRET.data[0],
-                                                     h_da_img=DA_img_high_FRET.data[0],
-                                                     h_aa_img=AA_img_high_FRET.data[0],
-                                                     l_dd_img=DD_img_low_FRET.data[0],
-                                                     l_da_img=DA_img_low_FRET.data[0],
-                                                     l_aa_img=AA_img_low_FRET.data[0],
-                                                     a_val=a,
-                                                     d_val=d)
-            # coef = g_estimator.estimate_g_zal()
+                                                   mask_l=mask_low.data,
+                                                   h_dd_img=DD_img_high_FRET.data[0],
+                                                   h_da_img=DA_img_high_FRET.data[0],
+                                                   h_aa_img=AA_img_high_FRET.data[0],
+                                                   l_dd_img=DD_img_low_FRET.data[0],
+                                                   l_da_img=DA_img_low_FRET.data[0],
+                                                   l_aa_img=AA_img_low_FRET.data[0],
+                                                   a_val=a,
+                                                   d_val=d)
             if estimation_method == 'Zal':
                 coef = g_estimator.estimate_g_zal()
             elif estimation_method == 'Chen':
                 coef = g_estimator.estimate_g_chen()
-            elif estimation_method == 'Butz':
-                coef = g_estimator.estimate_g_butz()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
             if segment_mask:
