@@ -29,31 +29,72 @@ def _Fc_calc(dd_img, da_img, aa_img, a_val, d_val):
     return np.clip(Fc_img, a_min=0, a_max=None)
 
 @njit(parallel=True, cache=True)
-def _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
+def _E_D_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
     """ Apparent FRET efficiency calculation
     
     """
     fc_img = _Fc_calc(dd_img, da_img, aa_img, a_val, d_val)
-    E_app_img = np.zeros_like(fc_img)
+    E_D_img = np.zeros_like(fc_img)
 
-    epsilon = 1e-13
+    epsilon = 1e-12
 
     for i in prange(fc_img.shape[0]):
         DD_frame = dd_img[i]
         Fc_frame = fc_img[i]
 
         Fc_G_frame = Fc_frame / G_val
-        E_app_frame = Fc_G_frame / (DD_frame + Fc_G_frame + epsilon)
+        E_D_frame = Fc_G_frame / (DD_frame + Fc_G_frame + epsilon)
                             
-        E_app_img[i] = np.clip(E_app_frame, a_min=0, a_max=None)
-    return E_app_img
+        E_D_img[i] = np.clip(E_D_frame, a_min=0.0, a_max=1.0)
+    return E_D_img
+
+@njit(parallel=True, cache=True)
+def _E_A_calc(dd_img, da_img, aa_img, a_val, d_val, eps_rel_vals):
+    """ FRET ratio calculation
+    
+    """
+    fc_img = _Fc_calc(dd_img, da_img, aa_img, a_val, d_val)
+    E_A_img = np.zeros_like(fc_img)
+
+    epsilon = 1e-12
+
+    for i in prange(fc_img.shape[0]):
+        AA_frame = aa_img[i]
+
+        # find zero pixels in AA_frame
+        AA_zeros_mask = AA_frame == 0
+        zeros_num = np.sum(AA_zeros_mask)
+        if zeros_num > 0:
+            zeros_idx = np.empty((2, zeros_num), dtype=np.int32)
+            i_px = 0
+            for x in prange(AA_frame.shape[0]):
+                for y in range(AA_frame.shape[1]):
+                    if AA_zeros_mask[x,y]:
+                        zeros_idx[0,i_px] = x
+                        zeros_idx[1,i_px] = y
+                        i_px += 1
+
+
+        Fc_frame = fc_img[i]
+        aAA_frame = (AA_frame + epsilon) * a_val
+        E_A_frame = (Fc_frame / aAA_frame) * eps_rel_vals 
+
+        # set small value to previously found zero pixels in estimated E_A_frame
+        if zeros_num > 0:
+            for zero_i in prange(zeros_num):
+                x = zeros_idx[0, zero_i]
+                y = zeros_idx[1, zero_i]
+                E_A_frame[x, y] = epsilon
+
+        E_A_img[i] = np.clip(E_A_frame, a_min=0, a_max=1.0)
+    return E_A_img
 
 @njit(parallel=True, cache=True)
 def _Ecor_calc(dd_img, da_img, aa_img, a_val, d_val, G_val, corr_img):
     """ Corrected FRET efficiency calculation
     
     """
-    E_app_img = _Eapp_calc(dd_img, da_img, aa_img, a_val, d_val, G_val)
+    E_app_img = _E_D_calc(dd_img, da_img, aa_img, a_val, d_val, G_val)
     E_cor_img = E_app_img * corr_img
     return E_cor_img
 
@@ -74,44 +115,61 @@ class E_FRET():
         Donor cross-talk coefficient (I_DA(D) / I_DD(D))
     G_val: float
         Gauge ("G") factor of imaging system
+    eps_rel_val: float
+        Relation between acceptor and donor extinction coefficients at donor excitation wavelength
 
     Methods
     -------
     Fc_img():
         Calculate sensitized fluorescence image time series.
         returns ndarray [t,x,y]
-    Eapp_img():
-        Calculate apparent FRET efficiency image time series.
+    E_D_img():
+        Calculate apparent FRET efficiency (Zal and Gascoigne, 2004) for image time series.
+        returns ndarray [t,x,y]
+    E_A_img():
+        Calculate FRET ratio (Erickson et al., 2001) for image time series.
         returns ndarray [t,x,y]
     Ecorr_img(f0_frames:int=2):
-        Calculate corrected FRET efficiency image time series.
+        Calculate corrected FRET efficiency for image time series.
         returns ndarray [t,x,y]
 
     """
-    def __init__(self, dd_img, da_img, aa_img,
-                 a_val, d_val, G_val):
+    def __init__(self, dd_img:np.ndarray, da_img:np.ndarray, aa_img:np.ndarray,
+                 a_val:float, d_val:float,
+                 G_val:float=None, eps_rel_val:float=None):
         self.dd_img = dd_img
         self.da_img = da_img
         self.aa_img = aa_img
         self.a_val = a_val
         self.d_val = d_val
         self.G_val = G_val
+        self.eps_rel_val = eps_rel_val
 
     def Fc_img(self):
         return _Fc_calc(self.dd_img, self.da_img, self.aa_img,
                         self.a_val, self.d_val)
 
-    def Eapp_img(self):
-        return _Eapp_calc(self.dd_img, self.da_img, self.aa_img,
-                          self.a_val, self.d_val, self.G_val)
+    def E_D_img(self):
+        if self.G_val is None:
+            raise ValueError("G factor must be provided for FRET efficiency calculation!")
+        return _E_D_calc(self.dd_img, self.da_img, self.aa_img,
+                         self.a_val, self.d_val, self.G_val)
+    
+    def E_A_img(self):
+        if self.eps_rel_val is None:
+            raise ValueError("Epsilon_rel must be provided for FRET ratio calculation!")
+        return _E_A_calc(self.dd_img, self.da_img, self.aa_img,
+                         self.a_val, self.d_val, self.eps_rel_val)
     
     def Ecorr_img(self, f0_frames:int=2):
+        if self.G_val is None:
+            raise ValueError("G factor must be provided for FRET efficiency calculation!")
         aa_f0_img = np.mean(self.aa_img[:f0_frames], axis=0, dtype=np.float32)
         corr_img = aa_f0_img / self.aa_img
         return _Ecor_calc(self.dd_img, self.da_img, self.aa_img,
                           self.a_val, self.d_val, self.G_val,
                           corr_img)
-    
+
 
 class CrossTalkEstimation():
     """ Class for estimating cross-talk coefficients from image time series.

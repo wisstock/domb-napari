@@ -30,6 +30,7 @@ import domb_napari._utils as utils
 import domb_napari._e_fret as e_fret
 
 
+
 @magic_factory(call_button='Preprocess stack',
                stack_order={"choices": ['TCXY', 'CTXY']},
                correction_method={"choices": ['exp', 'bi_exp']},)
@@ -103,6 +104,7 @@ def split_channels(viewer: Viewer, img:Image,
                 raise ValueError('Input image has to have 3 or 4 dimensions!')       
         
         _split_channels()
+
 
 
 @magic_factory(call_button='Align stack',
@@ -218,6 +220,7 @@ def dw_registration(viewer: Viewer, offset_img:Image,
             raise ValueError('Incorrect dimensions of the input image!')
 
 
+
 @magic_factory(call_button='Estimate cross-talk',
                presented_fluorophore={"choices": ['A', 'D']},
                saving_path={'mode': 'd'})
@@ -280,6 +283,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
         _cross_calc()
 
 
+
 def _g_calc_init(widget):
     """ G-factor estimation widget initialization function for dynamic interface update
 
@@ -307,6 +311,7 @@ def _g_calc_init(widget):
     update_interface(widget.estimation_method.value)
 
 @magic_factory(widget_init=_g_calc_init,
+               call_button='Estimate',
                estimation_method={"choices": ["Zal", "Chen"], "label": "Estimation Method"},)
 def g_calc(viewer: Viewer, estimation_method:str='Zal',
            DD_img_high_FRET:Image=None, DA_img_high_FRET:Image=None, AA_img_high_FRET:Image=None,
@@ -476,11 +481,34 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
 
 
 
-@magic_factory(call_button='Estimate E-FRET',
-               output_type={"choices": ['Fc', 'Eapp', 'Ecorr']},)
-def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
-               a:float=0.0136, d:float=0.2646, G:float=2.99,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.992
-               output_type:str='Fc',
+def _e_app_calc_init(widget):
+    """ Eapp calculation widget initialization function for dynamic interface update
+
+    """
+    options_map = {'Fc': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'save_normalized'],
+                   'E_D': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized'],
+                   'E_A': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'ε_relation', 'save_normalized'],
+                   'Ecorr': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized']}
+    all_dynamic_widgets = [name for params in options_map.values() for name in params]
+
+    def update_interface(method_name):
+        for name in all_dynamic_widgets:
+            getattr(widget, name).visible = False
+            
+        active_widgets = options_map.get(method_name, [])
+        for name in active_widgets:
+            getattr(widget, name).visible = True
+    widget.output_type.changed.connect(update_interface)
+    
+    update_interface(widget.output_type.value)
+
+@magic_factory(widget_init=_e_app_calc_init,
+               call_button='Estimate FRET',
+               output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'], 'label': 'Estimation Method'},)
+def e_app_calc(viewer: Viewer, output_type:str='Fc',
+               DD_img:Image=None, DA_img:Image=None, AA_img:Image=None,
+               a:float=0.0136, d:float=0.2646,
+               G:float=2.99, ε_relation:float=0.0135,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.992
                save_normalized:bool=True):
     if input is not None:
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
@@ -502,14 +530,18 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                                        aa_img=AA_img.data,
                                        a_val=a,
                                        d_val=d,
-                                       G_val=G)
+                                       G_val=G,
+                                       eps_rel_val=ε_relation)
             output_name = AA_img.name.replace('_ch3', '')
             if output_type == 'Ecorr':
                 output_fret_img = e_fret_img.Ecorr_img()
                 output_suffix = '_Ecorr'
-            elif output_type == 'Eapp':
-                output_fret_img = e_fret_img.Eapp_img()
-                output_suffix = '_Eapp'
+            elif output_type == 'E_D':
+                output_fret_img = e_fret_img.E_D_img()
+                output_suffix = '_E_D'
+            elif output_type == 'E_A':
+                output_fret_img = e_fret_img.E_A_img()
+                output_suffix = '_E_A'
             elif output_type == 'Fc':
                 output_fret_img = e_fret_img.Fc_img()
                 output_suffix = '_Fc'
@@ -524,6 +556,7 @@ def e_app_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
             show_info(f'{output_type} img calculated in {end-start:.2f}s')
 
         _e_app_calc()
+
 
 
 @magic_factory(call_button='Calc Red-Green')
@@ -576,6 +609,7 @@ def der_series(viewer: Viewer, img:Image,
         _der_series()
 
 
+
 @magic_factory(call_button='Calc relative intensity',
                values_mode={"choices": ['ΔF', 'ΔF/F0']},)
 def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5):
@@ -607,6 +641,7 @@ def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5):
             yield (output_img, img.name + f'_{values_mode}')
 
         _rel_series()
+
 
 
 @magic_factory(call_button='Build Dots Mask',
@@ -657,6 +692,7 @@ def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detect
             yield (peaks_labels, labels_name)
 
         _dot_mask_calc()
+
 
 
 @magic_factory(call_button='Build Up Mask',
@@ -741,6 +777,7 @@ def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels,
         _up_mask_calc()                
 
 
+
 @magic_factory(call_button='Build Mask',
                masking_mode={"choices": ['up', 'down']},)
 def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
@@ -791,7 +828,8 @@ def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
             yield (labels, labels_name)
 
         _mask_calc()
-            
+
+
 
 @magic_factory(call_button='Build Profiles',
                values_mode={"choices": ['ΔF', 'ΔF/F0', 'abs.']},)
@@ -853,6 +891,7 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         ax.set_ylabel(ylab)
         plt.title(f'{img.name} ROIs profiles, {values_mode} mode, labels: {labels.name}, simple baseline: {use_simple_baseline}')
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='ROIs Prof.')
+
 
 
 @magic_factory(call_button='Build Profiles',
@@ -975,6 +1014,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Img Stat Prof.')
 
 
+
 @magic_factory(call_button='Build Profiles',
                labels_num={"choices": ['1', '2', '3']},
                values_mode={"choices": ['ΔF', 'ΔF/F0', 'abs.']},
@@ -1091,6 +1131,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
         viewer.window.add_dock_widget(FigureCanvas(mpl_fig), name='Multiple Lab Stat Prof.')
 
 
+
 @magic_factory(call_button='Save Data',
                saving_path={'mode': 'd'})
 def save_df(img:Image, labels:Labels,
@@ -1198,6 +1239,7 @@ def save_df(img:Image, labels:Labels,
                                     df_ROI.astype(output_df.dtypes)],
                                     ignore_index=True)
         output_df.to_csv(os.path.join(saving_path, df_name+'.csv'))
+
 
 
 if __name__ == '__main__':

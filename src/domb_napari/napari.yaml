@@ -63,11 +63,11 @@ contributions:
     - command: domb-napari.rel_series_widget
       display_name: ΔF series
     - command: domb-napari.e_app_widget
-      display_name: E-FRET estimation
+      display_name: FRET estimation
     - command: domb-napari.cross_calc_widget
-      display_name: E-FRET cross-talk estimation
+      display_name: FRET cross-talk estimation
     - command: domb-napari.g_calc_widget
-      display_name: E-FRET G-factor estimation
+      display_name: FRET G-factor estimation
     - command: domb-napari.dot_mask_widget
       display_name: Dot-patterns masking
     - command: domb-napari.up_mask_calc_widget
@@ -115,7 +115,7 @@ contributions:
 
   submenus:
       - id: e-fret
-        label: E-FRET
+        label: FRET
       - id: profiles
         label: Labels Profiles
       - id: preprocessing

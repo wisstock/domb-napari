@@ -1,6 +1,6 @@
 [project]
 name = "domb-napari"
-version = "0.5.0"
+version = "0.5.1"
 authors = [
   {name = "Borys Olifirov", email = "omnia.faty@gmail.com"}
 ]
