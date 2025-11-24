@@ -317,7 +317,7 @@ def _g_calc_init(widget):
 def g_calc(viewer: Viewer, estimation_method:str='Zal',
            DD_img_high_FRET:Image=None, DA_img_high_FRET:Image=None, AA_img_high_FRET:Image=None,
            DD_img_low_FRET:Image=None, DA_img_low_FRET:Image=None, AA_img_low_FRET:Image=None,
-           # optins for Zal
+           # options for Zal
            mask: Labels=None,
            segment_mask:bool=True,
            # options for Chen

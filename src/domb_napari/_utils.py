@@ -221,17 +221,40 @@ def mask_segmentation(input_mask:np.ndarray, fragment_num:int=30):
 
 
 @numba.njit(parallel=True, cache=True)
-def _delta_df_kernel(input_img, base_img, norm_img, output_img):
+def _delta_df(input_img, base_img, norm_img):
     """Numba function for 'dF' mode calculation."""
+    output_img = np.empty_like(input_img, dtype=np.float32)
     for i in numba.prange(input_img.shape[0]):
         output_img[i] = (input_img[i] - base_img) * norm_img
+    return output_img
 
 @numba.njit(parallel=True, cache=True)   # NORM NOT WORKING!
-def _delta_df_f0_kernel(input_img, base_img, norm_img, output_img):
+def _delta_df_f0(input_img, base_img, norm_img):
     """Numba function for 'dF/F0' mode calculation."""
-    epsilon = 1e-9
+    output_img = np.empty_like(input_img, dtype=np.float32)
+    epsilon = 1e-12
+
+    base_zero_mask = base_img == 0
+    zeros_num = np.sum(base_zero_mask)
+    if zeros_num > 0:
+        zeros_idx = np.empty((2, zeros_num), dtype=np.int32)
+        i_px = 0
+        for x in numba.prange(base_img.shape[0]):
+            for y in numba.prange(base_img.shape[1]):
+                if base_zero_mask[x,y]:
+                    zeros_idx[0,i_px] = x
+                    zeros_idx[1,i_px] = y
+                    # base_img[x,y] = epsilon * -1.0  # prevent division by zero 
+                    # norm_img[x,y] = 0.0
+                    i_px += 1
+
+    df_img = _delta_df(input_img, base_img, norm_img)
+    # base_norm_img = base_img * norm_img
     for i in numba.prange(input_img.shape[0]):
-        output_img[i] = ((input_img[i] - base_img) * norm_img) / ((base_img * norm_img) + epsilon)
+        output_frame = df_img[i] / (base_img + epsilon)
+        output_frame = output_frame * norm_img
+        output_img[i] = output_frame
+    return output_img
 
 def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
     """
@@ -252,7 +275,7 @@ def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
         A 3D array with the calculated delta values.
     """
     base_img = np.mean(input_img[:win_size], axis=0).astype(np.float32)
-    output_img = np.empty_like(input_img, dtype=np.float32)
+    # output_img = np.empty_like(input_img, dtype=np.float32)
     norm_img = np.max(input_img, axis=0)
     norm_range = np.max(norm_img) - np.min(base_img)
     if norm_range == 0:
@@ -260,13 +283,11 @@ def delta_img(input_img: np.ndarray, mode:str='dF', win_size:int=5):
     norm_img = ((norm_img - np.min(base_img)) / norm_range).clip(0, 1)
 
     if mode == 'dF':        
-        _delta_df_kernel(input_img, base_img, norm_img, output_img)
+        return _delta_df(input_img, base_img, norm_img)
     elif mode == 'dF/F0':
-        _delta_df_f0_kernel(input_img, base_img, norm_img, output_img)
+        return _delta_df_f0(input_img, base_img, norm_img)
     else:
         raise ValueError("Unknown mode! Use 'dF' or 'dF/F0'.")
-
-    return output_img
 
 
 @njit(parallel=True, cache=True)
