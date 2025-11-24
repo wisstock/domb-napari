@@ -7,6 +7,7 @@ from napari.qt.threading import thread_worker
 
 import pathlib
 import os
+import yaml
 import time
 
 import pandas as pd
@@ -483,14 +484,21 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
 
 def _e_app_calc_init(widget):
     """ Eapp calculation widget initialization function for dynamic interface update
+    and loading FRET pair coefficients from YAML config file
 
     """
-    options_map = {'Fc': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'save_normalized'],
-                   'E_D': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized'],
-                   'E_A': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'ε_relation', 'save_normalized'],
-                   'Ecorr': ['DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized']}
+    options_map = {'Fc': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'save_normalized'],
+                   'E_D': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized'],
+                   'E_A': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'ε_relation', 'save_normalized'],
+                   'Ecorr': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized']}
     all_dynamic_widgets = [name for params in options_map.values() for name in params]
 
+    mode_selector = widget.config_mode
+    file_picker = widget.config_path
+    pair_selector = widget.fret_pair
+    DEFAULT_CONFIG_PATH = pathlib.Path(__file__).parent / '_e_fret_coefs.yaml'
+
+    # widget fields update function 
     def update_interface(method_name):
         for name in all_dynamic_widgets:
             getattr(widget, name).visible = False
@@ -499,13 +507,82 @@ def _e_app_calc_init(widget):
         for name in active_widgets:
             getattr(widget, name).visible = True
     widget.output_type.changed.connect(update_interface)
-    
+
+    def load_coefficients(path):
+            """ Helper function to read YAML and update available FRET pair list
+            
+            """
+            # Clear the list if the path is invalid
+            if not path or not path.is_file():
+                pair_selector.choices = []
+                return
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                    widget.fret_coefs.value = data
+                
+                if isinstance(data, dict):
+                    # Update selection options
+                    pair_selector.choices = list(data.keys())
+                    show_info(f"Successfully loaded configuration from: {path.name}")
+            except Exception as e:
+                show_info(f"Error loading {path.name}: {e}")
+
+    @pair_selector.changed.connect
+    def update_coefficients(selected_pair):
+        coefs_dict = widget.fret_coefs.value.get(selected_pair)
+        widget.a.value = coefs_dict['a']
+        widget.d.value = coefs_dict['d']
+        widget.G.value = coefs_dict['G']
+        widget.ε_relation.value = coefs_dict['epsilon_rel']
+
+        show_info(f"FRET pair {selected_pair}, coefficients: a={widget.a.value}, d={widget.d.value}, G={widget.G.value}, ε relation={widget.ε_relation.value}")
+
+    @mode_selector.changed.connect
+    def _config_mode_change(mode):
+        if mode == 'Default':
+            # Hide file picker
+            file_picker.visible = False
+            # Load default file
+            load_coefficients(DEFAULT_CONFIG_PATH)
+        else:
+            # Show file picker
+            file_picker.visible = True
+            # If a file was previously selected, load it
+            if file_picker.value:
+                load_coefficients(file_picker.value)
+            else:
+                pair_selector.choices = []
+
+    @file_picker.changed.connect
+    def _on_file_change(event):
+        # Load only if we are in "Load" mode
+        if mode_selector.value == 'Load':
+            load_coefficients(file_picker.value)
+
+    # Call once manually to set the initial state
+    _config_mode_change(mode_selector.value)
+
     update_interface(widget.output_type.value)
 
 @magic_factory(widget_init=_e_app_calc_init,
                call_button='Estimate FRET',
-               output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'], 'label': 'Estimation Method'},)
-def e_app_calc(viewer: Viewer, output_type:str='Fc',
+               config_mode={'label': 'Config Mode', 'widget_type': 'RadioButtons',
+                            'choices': ['Load', 'Default'],
+                            'orientation': 'horizontal'},
+               config_path = {'label': 'Config Path', 'widget_type': 'FileEdit',
+                              'mode': 'r', 'filter': '*.yaml;*.yml', 'visible': False},
+               fret_pair={'label': 'FRET Pair',
+                          'choices': [],
+                          'widget_type': 'ComboBox'},
+               fret_coefs={'visible': False},
+               output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'],
+                            'label': 'Estimation Method'},)
+def e_app_calc(viewer: Viewer,
+               config_mode:str='Load', config_path: pathlib.Path=None,
+               fret_pair:str=None,
+               fret_coefs:dict=None,
+               output_type:str='Fc',
                DD_img:Image=None, DA_img:Image=None, AA_img:Image=None,
                a:float=0.0136, d:float=0.2646,
                G:float=2.99, ε_relation:float=0.0135,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.992
