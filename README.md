@@ -19,6 +19,103 @@ This plugin offers widgets specifically designed to analyze the redistribution o
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
+### Plugin Structure
+``` mermaid
+graph TD
+    
+subgraph Preprocessing [Preprocessing]
+    MP[Multichannel Image Preprocessing]
+    R[Multichannel Image Registration]
+	R --> MP
+end
+
+subgraph Analysis [Analysis]
+    DF[ΔF Series]
+    RG[Red-green Series]
+end
+MP ==> Analysis
+
+subgraph FRET [FRET]
+	subgraph Calibration [Calibration]
+        FC[Cross-talk Estimation]
+        FG[G-factor Estimation]
+    end
+    FR[FRET Estimation]
+    
+end
+MP ==> FRET
+FR ---> Analysis
+FR ---> Segmentation
+
+
+
+subgraph Segmentation [Segmentation]
+    UP[Up Masking]
+    DOWN[Masking]
+    DOT[Dot-pattern Masking]
+end
+%% MP ==> Segmentation
+Analysis ==> Segmentation
+
+
+subgraph Vis [Visualization & Data Saving]
+    subgraph Stat [Aggregated Plots]
+        MIP[Multiple Images Profiles]
+        MMP[Multiple Masks Profiles]
+    end
+    RP[ROIs Profiles]
+    DAT[Data Frame Saving]
+end
+Segmentation ==> Vis
+FRET ==> Vis
+
+```
+
+### E-FRET Module Structure
+``` mermaid
+flowchart TD
+    %% INPUT DATA
+    %% Input[/Input Images:<br/> I<sub>DD</sub>, I<sub>DA</sub>, I<sub>AA</sub>/]:::data
+    Input@{shape: manual-input, label: "Input Images:<br/> I<sub>DD</sub>, I<sub>DA</sub>, I<sub>AA</sub>"}
+    
+    %% Mask[/ROIs Mask/]:::data
+    Mask@{shape: manual-input, label: "ROIs Mask"}
+
+    %% CALIBRATION
+    subgraph Calibration [Coeficients Estimation]
+        %% direction TB
+        
+        CT[_CrossTalkEstimation_ Class]:::algo
+        GF[_GFactorEstimation_ Class]:::algo
+        
+        Coeffs(Cross-talck coefs. __a__ & __d__):::result
+        GF_Val(__G__ factor):::result
+
+        Input -->|Samples with A or D only| CT
+        Mask --> CT
+        CT -->|Linear regression| Coeffs
+        
+        Input -->|Samples with AD tandem| GF
+        Mask & Coeffs --> GF
+        GF -->|Zal / Chen method| GF_Val
+    end
+
+    %% ANA
+    subgraph Analysis [FRET Estimation]
+        %% direction TB
+        
+        Main[_CubesFRET_ Class]:::algo
+        Numba[[JIT compiled Numba functions]]:::algo
+        Output(Pixel-wise FRET estimation:<br/> F<sub>c</sub>, E<sub>D</sub>, E<sub>A</sub>, E<sub>corr</sub>):::result
+
+        Input ==> Main
+        Coeffs & GF_Val ==> Main
+        
+        Main ==> Output
+        Main <-...->|Pixel-wise calc| Numba
+    end
+```
+
 
 ---
 
@@ -140,7 +237,7 @@ Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.n
 ### E-FRET Crosstalk Estimation
 _In progress._ 
 
-Estimation of the crosstalk/bleedthrough of fluorescence between the donor and acceptor’s spectral channels.
+Estimation of the crosstalk/bleed-through of fluorescence between the donor and acceptor’s spectral channels.
 
 ```math
 F_c = I_{DA} - a (I_{AA} - c I_{DD}) - d (I_{DD} - b I_{AA})
@@ -171,10 +268,10 @@ b \approx c \approx 0
 ```
 
 Parameters:
-- `DD img` - donor emission channel image acquired with the donor excitation wavelength.
-- `DA img` - donor emission channel image acquired with the acceptor excitation wavelength.
-- `AD img` - acceptor emission channel image acquired with the donor excitation wavelength.
-- `AA img` - acceptor emission channel image acquired with the acceptor excitation wavelength.
+- `DD img` - $I_{DD}$, donor emission channel image acquired with the donor excitation wavelength.
+- `DA img` - $I_{DA}$, donor emission channel image acquired with the acceptor excitation wavelength.
+- `AD img` - $I_{AD}$, acceptor emission channel image acquired with the donor excitation wavelength.
+- `AA img` - $I_{AA}$, acceptor emission channel image acquired with the acceptor excitation wavelength.
 - `mask` - .
 - `presented_fluorophore` - .
 - `saving_path` - .
@@ -184,7 +281,7 @@ Parameters:
 _In progress._ 
 
 ```math
-G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} = \frac{F_c - F_{c}^{post}}{I_{DD}^{post} - I_{DD}} = \frac{\Delta F_c}{\Delta I_{DD}}
+G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} = \frac{F_c - F_{c}^{post}}{I_{DD}^{post} - I_{DD}} = \frac{\Delta F_C}{\Delta I_{DD}}
 ```
 
 
@@ -196,11 +293,7 @@ G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d 
 Estimation of the E-FRET with 3-cube approach.
 
 ```math
-E_{app} = \frac{R}{R+G}
-```
-
-```math
-R = \frac{F_c}{I_{DD}}
+E_{D} = \frac{F_c / G}{F_c / G + I_{DD}}
 ```
 
 

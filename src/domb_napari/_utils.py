@@ -302,7 +302,7 @@ def labels_to_profiles(input_label:np.ndarray, input_img:np.ndarray):
 
 
 def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
-                      mode:str='ΔF', **kwargs):
+                      mode:str='dF', **kwargs):
     """ Computes the baseline of each profile in the input array using the Dietrich's method.
     pybaselines docs: https://pybaselines.readthedocs.io/en/latest/generated/api/pybaselines.Baseline.dietrich.html#pybaselines.Baseline.dietrich
 
@@ -333,17 +333,17 @@ def delta_prof_pybase(prof_arr: np.ndarray, win_size:int=4, stds:float=1.5,
         prof_baseline,_ = baseline_fit.dietrich(prof,
                                                 smooth_half_window=win_size,
                                                 num_std=stds)
-        if mode == 'ΔF/F0':
+        if mode == 'dF/F0':
             output_prof = (prof - prof_baseline) / prof_baseline
-        elif mode == 'ΔF':
+        elif mode == 'dF':
             output_prof = prof - prof_baseline
-        elif mode == 'abs.':
+        elif mode == 'abs':
             output_prof = prof - prof_baseline + np.mean(prof_baseline[0:2])
         output_arr.append(output_prof)
     return np.asarray(output_arr)
 
 
-def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='ΔF', **kwargs):
+def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='dF', **kwargs):
     """ Computes the baseline of each profile in the input array using a baseline estimation by the begingng of the profiles.
     Parameters
     ----------
@@ -367,9 +367,9 @@ def delta_prof_simple(prof_arr: np.ndarray, win_size:int=5, mode:str='ΔF', **kw
     output_arr = []
     for prof in prof_arr:
         F0 = np.mean(prof[:win_size])
-        if mode == 'ΔF/F0':
+        if mode == 'dF/F0':
             output_prof = (prof - F0) / F0
-        elif mode == 'ΔF':
+        elif mode == 'dF':
             output_prof = prof - F0
         output_arr.append(output_prof)
     return np.asarray(output_arr)

@@ -98,8 +98,8 @@ def _Ecor_calc(dd_img, da_img, aa_img, a_val, d_val, G_val, corr_img):
     E_cor_img = E_app_img * corr_img
     return E_cor_img
 
-class E_FRET():
-    """ Class for estimating FRET efficiency in image time series
+class CubesFRET():
+    """ Class for estimating FRET efficiency/FRET ratio in image time series
 
     Parameters/attributes
     ----------
@@ -235,8 +235,8 @@ class CrossTalkEstimation():
 
             fit_arr.append((arr_ref, arr_prm))
 
-            c_prm_fit = stats.linregress(arr_ref, arr_prm, alternative='greater')
-            c_off_fit = stats.linregress(arr_ref, arr_off, alternative='greater')
+            c_prm_fit = stats.linregress(arr_ref, arr_prm)
+            c_off_fit = stats.linregress(arr_ref, arr_off)
 
             row_dict =  {'frame_n': i,
                          c_prm_name+'_val': c_prm_fit.slope,

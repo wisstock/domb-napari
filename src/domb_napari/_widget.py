@@ -525,13 +525,13 @@ def e_app_calc(viewer: Viewer, output_type:str='Fc',
         @thread_worker(connect={'yielded':_save_e_app})
         def _e_app_calc():
             start = time.perf_counter()
-            e_fret_img = e_fret.E_FRET(dd_img=DD_img.data,
-                                       da_img=DA_img.data,
-                                       aa_img=AA_img.data,
-                                       a_val=a,
-                                       d_val=d,
-                                       G_val=G,
-                                       eps_rel_val=ε_relation)
+            e_fret_img = e_fret.CubesFRET(dd_img=DD_img.data,
+                                          da_img=DA_img.data,
+                                          aa_img=AA_img.data,
+                                          a_val=a,
+                                          d_val=d,
+                                          G_val=G,
+                                          eps_rel_val=ε_relation)
             output_name = AA_img.name.replace('_ch3', '')
             if output_type == 'Ecorr':
                 output_fret_img = e_fret_img.Ecorr_img()
@@ -845,8 +845,9 @@ def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
 
+        mode_dict = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0', 'abs.': 'abs'}
         baseline_params = {'win_size': ΔF_win, 
-                           'mode': values_mode,
+                           'mode': mode_dict[values_mode],
                            'stds': Dietrich_std}  # for pybaselines
 
         if use_simple_baseline:
@@ -922,8 +923,9 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image, img_2:Im
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
 
+        mode_dict = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0', 'abs.': 'abs'}
         baseline_params = {'win_size': ΔF_win, 
-                           'mode': values_mode,
+                           'mode': mode_dict[values_mode],
                            'stds': Dietrich_std}  # for pybaselines
 
         if use_simple_baseline:
@@ -1043,8 +1045,9 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                      'iqr':arr_iqr_stat,
                      'ci':arr_ci_stat}
 
+        mode_dict = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0', 'abs.': 'abs'}
         baseline_params = {'win_size': ΔF_win, 
-                           'mode': values_mode,
+                           'mode': mode_dict[values_mode],
                            'stds': Dietrich_std}  # for pybaselines
 
         if use_simple_baseline:
@@ -1149,7 +1152,7 @@ def save_df(img:Image, labels:Labels,
         input_img = img.data
         input_labels = labels.data
         df_name = img.name + '_' + labels.name
-        df_name = df_name.replace('_xform','')
+        df_name = df_name.replace('_algn','')
         time_line = np.linspace(0, (input_img.shape[0]-1)*time_scale, \
                                 num=input_img.shape[0])
         show_info(f'Input shape {input_img.shape}, labels shape {input_labels.shape}')
@@ -1183,16 +1186,16 @@ def save_df(img:Image, labels:Labels,
         # simple baseline calc
         profile_abs = utils.labels_to_profiles(input_label=input_labels,
                                                input_img=input_img)
-        profile_dF = utils.delta_prof_simple(profile_abs, mode='ΔF',
+        profile_dF = utils.delta_prof_simple(profile_abs, mode='dF',
                                              win_size=ΔF_win)
-        profile_dF_F0 = utils.delta_prof_simple(profile_abs, mode='ΔF/F0',
+        profile_dF_F0 = utils.delta_prof_simple(profile_abs, mode='dF/F0',
                                                 win_size=ΔF_win)
         # Dietrich baseline calc
-        profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs.',
+        profile_abs_base = utils.delta_prof_pybase(profile_abs, mode='abs',
                                                    win_size=Dietrich_win, stds=Dietrich_std)
-        profile_dF_base = utils.delta_prof_pybase(profile_abs, mode='ΔF',
+        profile_dF_base = utils.delta_prof_pybase(profile_abs, mode='dF',
                                                   win_size=Dietrich_win, stds=Dietrich_std)
-        profile_dF_F0_base = utils.delta_prof_pybase(profile_abs, mode='ΔF/F0',
+        profile_dF_F0_base = utils.delta_prof_pybase(profile_abs, mode='dF/F0',
                                                      win_size=Dietrich_win, stds=Dietrich_std)
         end = time.perf_counter()
         show_info(f'{img.name}: profiles calculated in {end-start:.2f}s')
