@@ -1,5 +1,6 @@
 from magicgui import magic_factory
 
+import napari
 from napari import Viewer
 from napari.layers import Image, Labels, Points
 from napari.utils.notifications import show_info, show_warning
@@ -30,6 +31,8 @@ from dipy.align.imaffine import AffineRegistration
 import domb_napari._utils as utils
 import domb_napari._e_fret as e_fret
 
+
+DEFAULT_FRET_CONFIG_PATH = pathlib.Path(__file__).parent / '_e_fret_coefs.yaml'
 
 
 @magic_factory(call_button='Preprocess stack',
@@ -449,27 +452,28 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                     show_info(f'G-factor estimation with provided mask, there are {np.max(roi_mask)} ROIs')
 
                 g_estimator = e_fret.GFactorEstimation(mask=roi_mask,
-                                                    mask_l=mask_low.data,
-                                                    h_dd_img=DD_img_high_FRET.data[0],
-                                                    h_da_img=DA_img_high_FRET.data[0],
-                                                    h_aa_img=AA_img_high_FRET.data[0],
-                                                    l_dd_img=DD_img_low_FRET.data[0],
-                                                    l_da_img=DA_img_low_FRET.data[0],
-                                                    l_aa_img=AA_img_low_FRET.data[0],
-                                                    a_val=a,
-                                                    d_val=d)
+                                                       h_dd_img=DD_img_high_FRET.data[0],
+                                                       h_da_img=DA_img_high_FRET.data[0],
+                                                       h_aa_img=AA_img_high_FRET.data[0],
+                                                       l_dd_img=DD_img_low_FRET.data[0],
+                                                       l_da_img=DA_img_low_FRET.data[0],
+                                                       l_aa_img=AA_img_low_FRET.data[0],
+                                                       a_val=a,
+                                                       d_val=d)
                 coef = g_estimator.estimate_g_zal()
             elif estimation_method == 'Chen':
+                if mask_high is None or mask_low is None:
+                    raise ValueError('Both high and low FRET masks are required for Chen G-factor estimation!')
                 g_estimator = e_fret.GFactorEstimation(mask=mask_high.data,
-                                                    mask_l=mask_low.data,
-                                                    h_dd_img=DD_img_high_FRET.data[0],
-                                                    h_da_img=DA_img_high_FRET.data[0],
-                                                    h_aa_img=AA_img_high_FRET.data[0],
-                                                    l_dd_img=DD_img_low_FRET.data[0],
-                                                    l_da_img=DA_img_low_FRET.data[0],
-                                                    l_aa_img=AA_img_low_FRET.data[0],
-                                                    a_val=a,
-                                                    d_val=d)
+                                                       mask_l=mask_low.data,
+                                                       h_dd_img=DD_img_high_FRET.data[0],
+                                                       h_da_img=DA_img_high_FRET.data[0],
+                                                       h_aa_img=AA_img_high_FRET.data[0],
+                                                       l_dd_img=DD_img_low_FRET.data[0],
+                                                       l_da_img=DA_img_low_FRET.data[0],
+                                                       l_aa_img=AA_img_low_FRET.data[0],
+                                                       a_val=a,
+                                                       d_val=d)
                 coef = g_estimator.estimate_g_zal()
             end = time.perf_counter()
             show_info(f'G-factor estimated in {end - start:.2f}s')
@@ -481,89 +485,213 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         _g_calc()
 
 
+DEFAULT_FRET_CONFIG_PATH = pathlib.Path(__file__).parent / '_e_fret_coefs.yaml'
+
+# def _e_app_calc_init(widget):
+#     """ Eapp calculation widget initialization function for dynamic interface update
+#     and loading FRET pair coefficients from YAML config file
+
+#     """
+#     mode_selector = widget.config_mode
+#     file_picker = widget.config_path
+#     pair_selector = widget.fret_pair
+
+#     # Track config file path to avoid re-loading the same file
+#     # widget._current_loaded_path = None
+#     widget._cached_path = None
+#     widget._cached_choices = []
+#     widget._last_valid_selection = None
+    
+#     def load_coefficients(input_path):
+#             """ Helper function to read YAML and update available FRET pair list
+            
+#             """
+#             if input_path is None:
+#                 return
+            
+#             path = pathlib.Path(input_path)
+#             data_changed = False
+
+#             if widget._cached_path != path:
+#                 if not path.is_file():
+#                     pair_selector.choices = []
+#                     widget._cached_path = None
+#                     widget._cached_choices = []
+#                     return
+#                 try:
+#                     with open(path, 'r', encoding='utf-8') as f:
+#                         data = yaml.safe_load(f)
+#                     show_info(f"Successfully loaded configuration from: {path.name}")
+#                     widget._cached_path = path
+#                     widget._cached_choices = list(data.keys())
+#                     data_changed = True
+#                 except Exception as e:
+#                     show_warning(f"Error loading {path.name}: {e}")
+#                     widget._cached_path = None
+#                     widget._cached_choices = []
+#                     return
+                
+#             current_selection = pair_selector.value
+
+#             if pair_selector.choices != widget._cached_choices:
+#                 pair_selector.choices = widget._cached_choices
+
+#             if current_selection in widget._cached_choices:
+#                 pair_selector.value = current_selection
+#             elif widget._cached_choices and data_changed:
+#                 pair_selector.value = widget._cached_choices[0]
+
+            
+#             # if not path or not path.is_file():
+#             #     pair_selector.choices = []
+#             #     return
+#             # if widget._current_loaded_path == path:
+#             #     return
+#             # try:
+#             #     with open(path, 'r', encoding='utf-8') as f:
+#             #         data = yaml.safe_load(f)
+
+#             #     widget._current_loaded_path = path
+#             #     pair_selector.choices = list(data.keys())
+#             #     show_info(f"Successfully loaded configuration from: {path.name}")
+#             # except Exception as e:
+#             #     show_warning(f"Error loading {path.name}: {e}")
+
+#     @mode_selector.changed.connect
+#     def _config_mode_change(mode):
+#         if mode == 'Default':
+#             file_picker.visible = False
+#             load_coefficients(DEFAULT_FRET_CONFIG_PATH)
+#         else:
+#             file_picker.visible = True
+#             if file_picker.value:
+#                 load_coefficients(file_picker.value)
+#             else:
+#                 pair_selector.choices = []
+
+#     @file_picker.changed.connect
+#     def _on_file_change(event):
+#         if mode_selector.value == 'Load':
+#             load_coefficients(file_picker.value)
+
+#     # Call once manually to set the initial state
+#     _config_mode_change(mode_selector.value)
+
 
 def _e_app_calc_init(widget):
-    """ Eapp calculation widget initialization function for dynamic interface update
-    and loading FRET pair coefficients from YAML config file
-
     """
-    options_map = {'Fc': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'save_normalized'],
-                   'E_D': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized'],
-                   'E_A': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'ε_relation', 'save_normalized'],
-                   'Ecorr': ['config_mode', 'config_path', 'fret_pair', 'DD_img', 'DA_img', 'AA_img', 'a', 'd', 'G', 'save_normalized']}
-    all_dynamic_widgets = [name for params in options_map.values() for name in params]
-
+    Initialize widget with robust state persistence.
+    """
     mode_selector = widget.config_mode
     file_picker = widget.config_path
     pair_selector = widget.fret_pair
-    DEFAULT_CONFIG_PATH = pathlib.Path(__file__).parent / '_e_fret_coefs.yaml'
+    
+    # --- 1. Define State Variables on the Widget Instance ---
+    # We attach these to the widget so they persist as long as the plugin is open
+    widget._cached_path = None       # Last loaded file path
+    widget._cached_choices = []      # List of FRET pairs [Key1, Key2...]
+    widget._last_valid_selection = None # The specific pair the user selected
 
-    # widget fields update function 
-    def update_interface(method_name):
-        for name in all_dynamic_widgets:
-            getattr(widget, name).visible = False
+    def restore_ui_state():
+        """
+        Force the UI to match our cached state.
+        This is called after file loads AND after napari layer updates.
+        """
+        # 1. Restore the options in the dropdown
+        if pair_selector.choices != widget._cached_choices:
+            pair_selector.choices = widget._cached_choices
+        
+        # 2. Restore the selected value
+        # If the current value is None (because napari reset it), but we have a 
+        # known last valid selection that is in our list, put it back.
+        if pair_selector.value is None and widget._last_valid_selection in widget._cached_choices:
+            pair_selector.value = widget._last_valid_selection
             
-        active_widgets = options_map.get(method_name, [])
-        for name in active_widgets:
-            getattr(widget, name).visible = True
-    widget.output_type.changed.connect(update_interface)
-
     def load_coefficients(path):
-            """ Helper function to read YAML and update available FRET pair list
+        """Load data from disk only if path changed."""
+        if path is None: 
+            return
             
-            """
-            # Clear the list if the path is invalid
-            if not path or not path.is_file():
-                pair_selector.choices = []
+        target_path = pathlib.Path(path)
+        
+        # Only read file if it's new
+        if widget._cached_path != target_path:
+            if not target_path.is_file():
+                # Reset everything if file invalid
+                widget._cached_choices = []
+                widget._last_valid_selection = None
+                restore_ui_state()
                 return
+
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(target_path, 'r', encoding='utf-8') as f:
                     data = yaml.safe_load(f)
-                    widget.fret_coefs.value = data
                 
-                if isinstance(data, dict):
-                    # Update selection options
-                    pair_selector.choices = list(data.keys())
-                    show_info(f"Successfully loaded configuration from: {path.name}")
+                # Update the Cache
+                widget._cached_choices = list(data.keys())
+                widget._cached_path = target_path
+                
+                # Default to first item if we just loaded fresh data
+                if widget._cached_choices:
+                    widget._last_valid_selection = widget._cached_choices[0]
+                
+                show_info(f"Loaded configuration: {target_path.name}")
+                
             except Exception as e:
-                show_info(f"Error loading {path.name}: {e}")
+                show_warning(f"Error loading {target_path.name}: {e}")
+                return
+        
+        # Always ensure UI is consistent after a load call
+        restore_ui_state()
 
-    @pair_selector.changed.connect
-    def update_coefficients(selected_pair):
-        coefs_dict = widget.fret_coefs.value.get(selected_pair)
-        widget.a.value = coefs_dict['a']
-        widget.d.value = coefs_dict['d']
-        widget.G.value = coefs_dict['G']
-        widget.ε_relation.value = coefs_dict['epsilon_rel']
-
-        show_info(f"FRET pair {selected_pair}, coefficients: a={widget.a.value}, d={widget.d.value}, G={widget.G.value}, ε relation={widget.ε_relation.value}")
+    # --- Event Connections ---
 
     @mode_selector.changed.connect
     def _config_mode_change(mode):
         if mode == 'Default':
-            # Hide file picker
             file_picker.visible = False
-            # Load default file
-            load_coefficients(DEFAULT_CONFIG_PATH)
+            load_coefficients(DEFAULT_FRET_CONFIG_PATH)
         else:
-            # Show file picker
             file_picker.visible = True
-            # If a file was previously selected, load it
             if file_picker.value:
                 load_coefficients(file_picker.value)
-            else:
-                pair_selector.choices = []
 
     @file_picker.changed.connect
     def _on_file_change(event):
-        # Load only if we are in "Load" mode
         if mode_selector.value == 'Load':
             load_coefficients(file_picker.value)
 
-    # Call once manually to set the initial state
-    _config_mode_change(mode_selector.value)
+    # --- CRITICAL FIX: Track Selection ---
+    # Whenever the user manually changes the dropdown, save that value.
+    # We use this to restore the value if napari wipes it later.
+    @pair_selector.changed.connect
+    def _on_pair_selected(new_value):
+        if new_value is not None:
+            widget._last_valid_selection = new_value
 
-    update_interface(widget.output_type.value)
+    # --- CRITICAL FIX: Hook into Napari Layer Events ---
+    # magicgui resets widgets when layers change. We connect to these events
+    # to immediately re-apply our choices.
+    
+    # Safely get current viewer. Note: this requires the viewer to exist 
+    # when the widget is created.
+    try:
+        viewer = napari.current_viewer()
+        
+        def _on_layer_update(event):
+            # Re-apply our cached state whenever layers change
+            restore_ui_state()
+
+        # Connect to both insertion and removal of layers
+        viewer.layers.events.inserted.connect(_on_layer_update)
+        viewer.layers.events.removed.connect(_on_layer_update)
+        
+    except RuntimeError:
+        # Handle case where viewer might not be ready (e.g. headless tests)
+        pass
+
+    # Initial Setup
+    _config_mode_change(mode_selector.value)
 
 @magic_factory(widget_init=_e_app_calc_init,
                call_button='Estimate FRET',
@@ -575,17 +703,13 @@ def _e_app_calc_init(widget):
                fret_pair={'label': 'FRET Pair',
                           'choices': [],
                           'widget_type': 'ComboBox'},
-               fret_coefs={'visible': False},
                output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'],
                             'label': 'Estimation Method'},)
 def e_app_calc(viewer: Viewer,
                config_mode:str='Load', config_path: pathlib.Path=None,
                fret_pair:str=None,
-               fret_coefs:dict=None,
                output_type:str='Fc',
                DD_img:Image=None, DA_img:Image=None, AA_img:Image=None,
-               a:float=0.0136, d:float=0.2646,
-               G:float=2.99, ε_relation:float=0.0135,  # CFP+YFP: a=0.122, d=0.794, G=3.6 | TagBFP+mBaoJin: a=0.0136, d=0.2646, G=2.992
                save_normalized:bool=True):
     if input is not None:
         if not np.all([DD_img.data.ndim == 3, DA_img.data.ndim == 3, AA_img.data.ndim == 3]):
@@ -601,6 +725,23 @@ def e_app_calc(viewer: Viewer,
 
         @thread_worker(connect={'yielded':_save_e_app})
         def _e_app_calc():
+            if config_mode == 'Load':
+                load_path = config_path
+            elif config_mode == 'Default':
+                load_path = DEFAULT_FRET_CONFIG_PATH
+
+            if not load_path or not load_path.exists():
+                raise FileNotFoundError('Configuration file not found!')
+            
+            with open(load_path, 'r', encoding='utf-8') as f:
+                config_dict = yaml.safe_load(f)
+            coefs = config_dict[fret_pair]
+            a = coefs['a']
+            d = coefs['d']
+            G = coefs['G']
+            xi = coefs['xi']
+            show_info(f'Selected FRET pair {fret_pair}: a={a}, d={d}, G={G}, 𝚵={xi}')
+
             start = time.perf_counter()
             e_fret_img = e_fret.CubesFRET(dd_img=DD_img.data,
                                           da_img=DA_img.data,
@@ -608,7 +749,7 @@ def e_app_calc(viewer: Viewer,
                                           a_val=a,
                                           d_val=d,
                                           G_val=G,
-                                          eps_rel_val=ε_relation)
+                                          eps_rel_val=xi)
             output_name = AA_img.name.replace('_ch3', '')
             if output_type == 'Ecorr':
                 output_fret_img = e_fret_img.Ecorr_img()
@@ -630,7 +771,7 @@ def e_app_calc(viewer: Viewer,
                 output_norm = output_fret_img*img_norm
                 yield (output_norm, output_name + output_suffix + '_norm')
             end = time.perf_counter()
-            show_info(f'{output_type} img calculated in {end-start:.2f}s')
+            show_info(f'{output_type} calculated in {end-start:.2f}s')
 
         _e_app_calc()
 

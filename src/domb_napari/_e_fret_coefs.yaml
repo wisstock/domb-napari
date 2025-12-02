@@ -2,16 +2,16 @@ ECFP/EFYP:
   a: 0.122
   d: 0.794
   G: 3.6
-  epsilon_rel: 0  # not defined
+  xi: 0  # not defined
 
 TagBFP/mBaoJin:
   a: 0.014
   d: 0.265
-  G: 2.99
-  epsilon_rel: 0.0135 
+  G: 2.99              # estimated with Zal method
+  xi: 0.0329  # estimated from spectral data
 
 mBaoJin/TagRFP:
   a: 0.111
   d: 0.052
   G: 0  # not defined
-  epsilon_rel: 0  # not defined
+  xi: 0.1293  # estimated from spectral data
