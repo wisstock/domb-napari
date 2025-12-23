@@ -15,7 +15,7 @@ from scipy import optimize
 
 import vispy.color
 from pybaselines import Baseline
-
+  
 
 def red_green_cmap():
     """ Red-green colormap for visualizing fluorescence changes.
@@ -87,50 +87,39 @@ def delta_smooth_cmap():
                                  [1.0, 0.8, 0.6]])
 
 
-def pb_exp_correction(input_img:np.ndarray, mask:np.ndarray, method:str='exp'):
-    """ Image series photobleaching correction by exponential fit. Correction proceeds by masked area of interest, not the whole frame to prevent autofluorescence influence.
-
-    Parameters
-    ----------
-    input_img: ndarray [t,x,y]
-        input image series
-    mask: ndarray [x,y]
-        mask of region of interest, must be same size with image frames
-    method: str
-        method for correction, exponential (`exp`) or bi-exponential (`bi_exp`)
-
-    Returns
-    -------
-    corrected_img: ndarray [t,x,y]
-        corrected image series
-    bleach_coefs: ndarray [t]
-        array of correction coeficients for each frame
-    r_val: float
-        R-squared value of exponential fit
+def pb_correction(input_img:np.ndarray, mask:np.ndarray, method:str='exp'):
+    """ Image series photobleaching correction by exponential fit or normalizaton to 1st frame.
+    Correction proceeds by masked area of interest, not the whole frame to prevent autofluorescence influence.
 
     """
     exp = lambda x,a,b: a * np.exp(-b * x)
     bi_exp = lambda x,a,b,c,d: (a * np.exp(-b * x)) + (c * np.exp(-d * x))
-
-    if method == 'exp':
-        func = exp
-    elif method == 'bi_exp':
-        func = bi_exp
-    else:
-        raise ValueError('Incorrect method!')
-
+    
+    if mask.dtype != bool:
+        mask = mask.astype(bool)
     bleach_profile = np.mean(input_img, axis=(1,2), where=mask)
-    x_profile = np.linspace(0, bleach_profile.shape[0], bleach_profile.shape[0])
-
-    popt,_ = optimize.curve_fit(func, x_profile, bleach_profile)
-    bleach_fit = np.vectorize(func)(x_profile, *popt)
-    bleach_coefs =  bleach_fit / bleach_fit.max()
-    bleach_coefs_arr = bleach_coefs.reshape(-1, 1, 1)
-    corrected_image = input_img/bleach_coefs_arr
-
-    _,_,r_val,_,_ = stats.linregress(bleach_profile, bleach_fit)
-
-    return corrected_image, bleach_coefs, r_val
+    
+    if method == 'exp' or method == 'biexp':
+        if method == 'exp':
+            func = exp
+        elif method == 'biexp':
+            func = bi_exp
+        x_profile = np.linspace(0, bleach_profile.shape[0], bleach_profile.shape[0])
+        popt,_ = optimize.curve_fit(func, x_profile, bleach_profile)
+        bleach_fit = np.vectorize(func)(x_profile, *popt)
+        bleach_coefs =  bleach_fit / bleach_fit.max()
+        bleach_coefs_arr = bleach_coefs.reshape(-1, 1, 1)
+        corrected_image = input_img/bleach_coefs_arr
+        _,_,r_val,_,_ = stats.linregress(bleach_profile, bleach_fit)
+        correction_metric = f'R²={r_val:.4f}'
+    elif method == '1st':
+        bleach_coefs = bleach_profile / bleach_profile[0]
+        bleach_coefs_arr = bleach_coefs.reshape(-1, 1, 1)
+        corrected_image = input_img/bleach_coefs_arr
+        correction_metric = f' bleaching {bleach_coefs[-1]*100:.0f}'
+    else:
+        raise ValueError('Incorrect correction method!')
+    return corrected_image, bleach_coefs, correction_metric
 
 
 def back_substr(input_img:np.ndarray, percentile:float=1.0):

@@ -45,7 +45,7 @@ def _E_D_calc(dd_img, da_img, aa_img, a_val, d_val, G_val):
         Fc_G_frame = Fc_frame / G_val
         E_D_frame = Fc_G_frame / (DD_frame + Fc_G_frame + epsilon)
                             
-        E_D_img[i] = np.clip(E_D_frame, a_min=0.0)
+        E_D_img[i] = E_D_frame
     return E_D_img
 
 @njit(parallel=True, cache=True)
@@ -62,7 +62,7 @@ def _E_A_calc(dd_img, da_img, aa_img, a_val, d_val, eps_rel_vals):
         AA_frame = aa_img[i]
 
         # find zero pixels in AA_frame
-        AA_zeros_mask = AA_frame <= 2
+        AA_zeros_mask = AA_frame <= 3
         zeros_num = np.sum(AA_zeros_mask)
         if zeros_num > 0:
             zeros_idx = np.empty((2, zeros_num), dtype=np.int32)
@@ -74,9 +74,9 @@ def _E_A_calc(dd_img, da_img, aa_img, a_val, d_val, eps_rel_vals):
                         zeros_idx[1,i_px] = y
                         i_px += 1
 
-        Fc_frame = fc_img[i]
+        eFc_frame = fc_img[i] * eps_rel_vals 
         aAA_frame = AA_frame * a_val
-        E_A_frame = (Fc_frame / aAA_frame) * eps_rel_vals 
+        E_A_frame = eFc_frame / aAA_frame
 
         # set small value to previously found zero pixels in estimated E_A_frame
         if zeros_num > 0:

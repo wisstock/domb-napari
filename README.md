@@ -82,13 +82,13 @@ flowchart TD
     Mask@{shape: manual-input, label: "ROIs Mask"}
 
     %% CALIBRATION
-    subgraph Calibration [Coeficients Estimation]
+    subgraph Calibration [Coefficients Estimation]
         %% direction TB
         
         CT[_CrossTalkEstimation_ Class]:::algo
         GF[_GFactorEstimation_ Class]:::algo
         
-        Coeffs(Cross-talck coefs. __a__ & __d__):::result
+        Coeffs(Cross-talk coefs. __a__ & __d__):::result
         GF_Val(__G__ factor):::result
 
         Input -->|Samples with A or D only| CT
@@ -116,32 +116,35 @@ flowchart TD
     end
 ```
 
-
 ---
-
 
 ## Preprocessing
 ### Dual-view Stack Registration
 Registration of four-channel image stacks, including two excitation wavelengths and two emission pathbands, acquired with a dual-view beam splitter. This setup detects different spectral pathbands using distinct sides of the camera matrix.
 
 - `offset img` - input for a four-channel time-lapse image stack.
-- `reference img` - an optional four-channel reference image (e.g., fluorescence beads image), used for offset estimation if `use reference img` is selected.
-- `input crop` - number of pixels that will be deleted from each side of input stack frames to discard misalignment artifacts from the dual-view system.
-- `output crop` - number of pixels that will be deleted from each side of output stack frames to discard registration artifacts.
+- `input crop` - number of pixels to remove from each side of input frames to eliminate beam-splitter alignment artifacts.
+- `output crop` - number of pixels to remove from each side of output frames to eliminate registration edge artifacts.
+- `align method` - choice between:
+    - `internal` - automated registration based on the input stack.
+    - `load matrix` - applies a pre-calculated affine transformation matrix from a `.txt` file.
+- `manual channels` - enables manual selection of Reference and Offset channels for registration.
+- `ref_off_ch` - defines which spectral channels to use for offset estimation.
+- `save matrix` - exports the calculated affine transformation matrix to a `.txt` file at the specified `saving path`.
 
 
 ### Multichannel Stack Preprocessing
-- `stack order` -  represents the order of axes in the input data array: T (time), C (color), X, and Y (image dimensions). If the input image stack has four dimensions (time, channel, x-axis, y-axis), channels will be split into individual three-dimensional images (time, x-axis, y-axis), each labeled with the `_ch%index%` suffix.
-- `median filter` - provides frame-by-frame image smoothing with a kernel of size specified in `median kernel`.
-- `background subtraction` -  compensates for background fluorescence intensity. Background intensity is estimated frame by frame as the 0.5 percentile of frame intensity.
-- If the `photobleaching correction` option is selected, the image will undergo correction using either an exponential (method `exp`) or bi-exponential (method `bi_exp`) fitting.
-- Image stacks can be cropped according to start and stop indexes specified in `frames range` if `drop frames` is selected.
+- `stack order` -  specifies the axis order of the input data: T (time), C (channel), X, and Y.
+- `median filter` - applies frame-by-frame smoothing with a kernel size specified in `median kernel`.
+- `background subtraction` - compensates for background fluorescence. The background is estimated as the 1.0 percentile of frame intensity.
+- `photobleaching correction` - fits the total intensity decay using exponential (`exp`) or bi-exponential (`bi_exp`) models.
+    - `correction mask` - an optional Labels layer to define the area for bleaching estimation (e.g., cell body).
+- `drop frames` - enables cropping the time sequence based on the `frames range` (start/stop indices).
+- `frames crop` - crops the image borders by a specified number of pixels.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/stack_preprocessing.png)
 
-
 ---
-
 
 ## Detection of Fluorescence Redistribution
 A set of widgets designed for preprocessing multispectral image stacks and detecting redistributions in fluorescence intensity. These widgets specifically analyze differential "red-green" image series to identify changes in fluorescence intensity.
@@ -164,11 +167,16 @@ If `save MIP` is selected, the maximal intensity projection (MIP) of the differe
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rg_series.png)
 
 ### ΔF Series
-_In progress._
+Calculates relative intensity changes for time-lapse images.
 
+Parameters:
+
+- `values mode` - detection mode:
+    - `ΔF` - absolute intensity changes ($F(t) - F_{0}$).
+    - `ΔF/F0` - relative intensity changes ($(F(t) - F_{0}) / F_{0}$).
+- `F0 win` - window size (number of frames) for baseline intensity ($F_{0}$) estimation.
 
 ---
-
 
 ## Masking
 ### Dots Pattern Masking
@@ -198,35 +206,41 @@ The widget provides two detection modes:
 Parameters:
 
 - `det frame index` - index of the frame from the input image used for label detection.
-- `det th` - treshold value for detecting bright sites, where the intensity on the selected frame is normalized in the range of -1 to 0.
+- `det th` - threshold value for detecting bright sites, where the intensity on the selected frame is normalized in the range of -1 to 0.
 - `in ROIs det` - option for activating in-ROIs masking.
-- `in ROIs det method` - method for in-ROIs masking; otsu provides simple Otsu thresholding, while the threshold method is identical to global detection on nomilized detection frame.
-- `in_ROIs_det_th_corr` - caling factor for the det th threshold value for in-ROIs masking.
+- `in ROIs det method` - method for in-ROIs masking; otsu provides simple Otsu thresholding, while the threshold method is identical to global detection on normalized detection frame.
+- `in_ROIs_det_th_corr` - scaling factor for the det th threshold value for in-ROIs masking.
 - `final opening fp` - footprint size in pixels for mask filtering using morphological opening (disabled if set to 0).
 - `final dilation fp` - footprint size in pixels for mask morphological dilation (disabled if set to 0).
 - `save total up mask` - if selected, a total up mask (containing all ROIs) will be created with the _up-mask suffix.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels.png)
-__Gplobal up labels__
+__Global up labels__
 
 The In-ROIs masking option can be particularly useful for co-localization detection. By applying a broad reference mask to several target images, you can create more precise labels for ROIs in specified cell compartments. The following examples demonstrate the detection of mutual locations for static PSD-95 enriched sites (postsynaptic membranes) and HPCA translocation sites only in the vicinity of synapses, using `_dots-labels` for PSD95-mRFP images.
 
-_Note: In the In-ROIs masking mode, labels of detected sites correspond to the matching labels from the input ROIs mask._
+> [!IMPORTANT]
+> In the In-ROIs masking mode, labels of detected sites correspond to the matching labels from the input ROIs mask.
 
 In-ROIs masking (reference)|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_1.png)
 :------------------:|:-------------------------:
-__In-ROIs maskin (translocation)__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_2.png)
+__In-ROIs masking (translocation)__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_2.png)
 __Masks overlay__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/up_labels_overlay.png)
 
 
 ### Intensity Masking
-Extension of __Up Masking__ widget. Detects regions with increasing (`masking mode` - `up`) or decreasing (`masking mode` - `down`) intensity in `-red-green` images. Returns a labels layer with either `_up-labels` or `_down-labels` suffix, depending on the mode.
+Extension of the __Up Masking__ widget. Detects regions with either significantly increasing (`up`) or decreasing (`down`) intensity in `-red-green` differential images.
+
+Parameters:
+
+- `masking mode` - defines whether to detect local intensity gains or losses.
+- `up threshold` - sensitivity for detecting intensity increases (normalized to maximum intensity).
+- `down threshold` - sensitivity for detecting intensity decreases.
+- `opening footprint` - disk radius for morphological opening to filter out noise.
 
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/int_labels.png)
 
-
 ---
-
 
 ## 3-cube E-FRET Approach
 Widgets for detection and analysis of Förster resonance energy transfer on multispectral image stacks.
@@ -234,10 +248,8 @@ Widgets for detection and analysis of Förster resonance energy transfer on mult
 Based on notation and approaches from [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/), [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/) and [Kamino et al., 2023](https://pubmed.ncbi.nlm.nih.gov/37014867/).
 
 
-### E-FRET Crosstalk Estimation
-_In progress._ 
-
-Estimation of the crosstalk/bleed-through of fluorescence between the donor and acceptor’s spectral channels.
+### E-FRET Cross-talk Estimation
+Estimates the cross-talk/bleed-through of fluorescence between the donor and acceptor’s spectral channels. 
 
 ```math
 F_c = I_{DA} - a (I_{AA} - c I_{DD}) - d (I_{DD} - b I_{AA})
@@ -272,13 +284,13 @@ Parameters:
 - `DA img` - $I_{DA}$, donor emission channel image acquired with the acceptor excitation wavelength.
 - `AD img` - $I_{AD}$, acceptor emission channel image acquired with the donor excitation wavelength.
 - `AA img` - $I_{AA}$, acceptor emission channel image acquired with the acceptor excitation wavelength.
-- `mask` - .
-- `presented_fluorophore` - .
-- `saving_path` - .
+- `mask` - labels layer used for masking cellular regions.
+- `presented_fluorophore` - specifies the fluorophore present in the sample (`A` for Acceptor, `D` for Donor).
+- `saving_path` - directory where the output CSV file with coefficients will be saved.
 
 
 ### E-FRET G-factor Estimation
-_In progress._ 
+Estimates the G-factor using high and low FRET samples. Supports methods by [Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/) and [Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/). 
 
 ```math
 G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d I_{DD}^{post})}{I_{DD}^{post} - I_{DD}} = \frac{F_c - F_{c}^{post}}{I_{DD}^{post} - I_{DD}} = \frac{\Delta F_C}{\Delta I_{DD}}
@@ -289,6 +301,20 @@ G = \frac{(I_{DA} - a I_{AA} - d I_{DD}) - (I_{DA}^{post} - a I_{AA}^{post} - d 
 \Delta F_c = G \cdot \Delta I_{DD}
 ```
 
+Parameters:
+
+- `estimation method` - method for G-factor estimation:
+    - `Zal` - linear regression of $\Delta F_c$ vs $\Delta I_{DD}$ (Zal & Gascoigne, 2004).
+    - `Chen` - intersection of lines from high and low FRET samples (Chen et al., 2006).
+- `DD img high FRET` / `low FRET` - $I_{DD}$ images for high and low FRET samples.
+- `DA img high FRET` / `low FRET` - $I_{DA}$ images for high and low FRET samples.
+- `AA img high FRET` / `low FRET` - $I_{AA}$ images for high and low FRET samples.
+- `mask` - (for `Zal` method) labels layer for ROIs.
+- `segment mask` - (for `Zal` method) if enabled, automatically segments the mask into smaller ROIs.
+- `mask high` / `mask low` - (for `Chen` method) masks for high and low FRET samples.
+- `a` & `d` - pre-calculated cross-talk coefficients.
+- `saving_path` - directory where the output CSV file with G-factor data will be saved.
+
 ### E-FRET Estimation
 Estimation of the E-FRET with 3-cube approach.
 
@@ -296,45 +322,59 @@ Estimation of the E-FRET with 3-cube approach.
 E_{D} = \frac{F_c / G}{F_c / G + I_{DD}}
 ```
 
-
-__ECFP and EYFP Setup:__
-
-- Microscope Olympus IX71
-- Camera PCO Sensicam QE
-- Cube Chroma 69008
-- Dual-view system with Chroma 505DCXR beam splitter
-- Donor excitation wavelength 435 nm
-- Acceptor excitation wavelength 505 nm
-
-__TagBFP and mBaoJin Setup:__
-
-- Microscope Olympus IX71
-- Camera PCO Sensicam QE
-- Cube Chroma 69002
-- Dual-view system with Chroma 505DCXR beam splitter
-- Donor excitation wavelength 405 nm
-- Acceptor excitation wavelength 495 nm
-
-This method utilizes default values of `a` and `d` coefficients and the `G`-factor for TagBFP and mBaoJin pair. 
-
 Parameters:
 
-- `DD img` - donor emission channel image acquired with the donor excitation wavelength.
-- `AD img` - acceptor emission channel image acquired with the donor excitation wavelength.
-- `AA img` - acceptor emission channel image acquired with the acceptor excitation wavelength.
-- `output type` - type of output image: sensitized emission (`Fc`), apparent FRET efficiency (`Eapp`), or FRET efficiency with photobleaching correction (`Ecorr`).
+- `Сonfig mode` - source of FRET coefficients:
+    - `Default` - uses pre-defined coefficients from the plugin directory.
+    - `Load` - allows selecting a custom YAML configuration file via `config path`.
+- `fret pair` - selects the specific fluorophore pair (from the loaded configuration).
+- `DD img` - donor emission channel image (donor excitation).
+- `DA img` - acceptor emission channel image (donor excitation).
+- `AA img` - acceptor emission channel image (acceptor excitation).
+- `output type` - output image type:
+    - `Fc` - sensitized emission (cross-talk corrected).
+    - `E_D` - donor-centric apparent FRET efficiency (Zal and Gascoigne, 2004).
+    - `E_A` - acceptor-centric FRET ratio (Erickson et al., 2001).
+    - `Ecorr` - FRET efficiency corrected for acceptor photobleaching.
+- `save normalized` - if enabled, saves an additional image normalized to the absolute intensity of the `AA img`.
 
-If the `save normalized` option is selected, an additional image will be saved. This image is normalized to the absolute intensity of the `AA img`, which results in reduced background noise amplitude.
-
-_Note: normalized images are useful for visual control and mask building only; they are not representative for quantitative analysis._
+> [!WARNING]
+> Normalized images are intended for visual inspection and mask construction only; they should not be used for quantitative analysis.
 
 Raw Eapp| ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_raw.png)
 :-:|:-:
 __Normalized Eapp__|![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/fret_norm.png)
 
 
----
+### FRET Coefficients Configuration
+The plugin uses a YAML configuration file to store and load coefficients for different FRET pairs. By default, it uses `_e_fret_coefs.yaml` located in the plugin directory.
 
+The configuration file structure:
+
+```yaml
+FRET_Pair_Name:
+  a: 0.031      # Acceptor cross-talk coefficient (I_DA(A) / I_AA(A))
+  d: 0.415      # Donor cross-talk coefficient (I_DA(D) / I_DD(D))
+  G: 9.26       # Gauge (G) factor
+  xi: 0.0535    # Ratio of acceptor/donor extinction coefficients (at donor excitation)
+```
+
+Users can provide a custom configuration file via the `E-FRET Estimation` widget by switching the `Config mode` to `Load`.
+
+
+### Stand-alone E-FRET Module
+The core FRET logic is implemented in the stand-alone module `_e_fret.py`. This module can be used independently of the napari interface for batch processing or custom analysis scripts.
+
+Key classes in `_e_fret.py`:
+
+- `CubesFRET` - basic class for FRET estimation. Supports calculation of sensitized emission ($F_c$), apparent FRET efficiency ($E_D$), FRET ratio ($E_A$), and corrected FRET efficiency ($E_{corr}$).
+- `CrossTalkEstimation` - estimates $a$ and $d$ coefficients using linear regression of pixel intensities from single-fluorophore reference samples.
+- `GFactorEstimation` - estimates the $G$-factor using either the acceptor photobleaching method ([Zal and Gascoigne, 2004](https://pubmed.ncbi.nlm.nih.gov/15189889/)) or the multi-FRET-level method ([Chen et al., 2006](https://pubmed.ncbi.nlm.nih.gov/16815904/)).
+- `KFactorEstimation` - estimates the $k$ factor used for donor/acceptor concentration ratio calculations.
+
+The module utilizes `numba` JIT compilation for high-performance pixel-wise calculations and `pandas`/`scipy` for statistical analysis during calibration steps.
+
+---
 
 ## Plotting and Data Frame Saving
 ### ROIs Profiles
@@ -344,8 +384,9 @@ Parameters:
 
 - `time scale` - sets the number of seconds between frames for x-axis scaling.
 - `values mod` - the mode of output profile calculation. Options are `ΔF/F0` (relative intensity changes), `ΔF` (absolute intensity changes), or `abs` (absolute intensity value)
-- `ΔF win`: if the `use_simple_baseline` option is selected, the baseline intensity is estimated as the mean intensity of the specified number of initial profile points. Otherwise, this parameter specifies the window half-size of the moving median baseline estimator (`noisy_median` from the `pybaselines` package).
-- `profiles crop` - if selected, only a specified range of intensity profile indexes will be plotted, corresponding to the start and stop indexes from `profiles range`.
+- `ΔF win`: if the `use_simple_baseline` option is selected, the baseline is the mean of the initial profile points. Otherwise, it defines the median filter window for the `pybaselines` estimator.
+- `Dietrich std`: (for `pybaselines` only) the number of standard deviations for thresholding in the Dietrich method.
+- `profiles crop` - crops the plotted profiles to the specified `profiles range`.
 
 Absolute intensity         | ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/rois_abs.png)
 :-------------------------:|:-------------------------:
@@ -390,26 +431,21 @@ Parameters:
 - `img` - input for a single channel time series image stack.
 - `lab` - input for a labels layer with ROIs.
 - `stim position` - input for a points layer with stimulation electrode position, should contain a single point only.
-- `time scale` - sets the number of seconds between frames for frames indexes scaling.
-- `ΔF win`: if the `use_simple_baseline` option is selected, the baseline intensity is estimated as the mean intensity of the specified number of initial profile points. Otherwise, this parameter specifies the window half-size of the moving median baseline estimator (`noisy_median` from the `pybaselines` package).
-- `save ROIs distances` - if selected, the average distance in pixels from the ROI to the frame will be saved in the data frame.
-- `custom stim position` - if selected, a custom stimulation electrode position from `stim position` layer will be used for distance calculations.
-- `saving path` - path to save the data frame.
+- `time scale` - input for frame-to-seconds scaling.
+- `ΔF win`: baseline window for the simple estimator.
+- `Dietrich win` & `Dietrich std`: window size and threshold for the `pybaselines` Dietrich estimator.
+- `save ROIs distances` - calculates and saves the average distance (pixels) from ROIs to a stimulation point.
+- `custom stim position` - uses a point from the `stim position` layer for distance calculations.
 
-The output data contains the following columns:
-- `id` - unique image ID, the name of the input `napari.Image` object.
-- `lab_id` - unique label ID, the name of the input `napari.Labels` object.
-- `roi` - ROI number, consecutively numbered starting from 1.
-- `dist` - average distance in px to the ROI from the frame, (if `save ROIs distances in data frame` option is selected).
-- `index` - frame index.
-- `time` - frame time point, adjusted according to the `time scale`.
-- `abs_int` - absolute intensity value.
-- `dF_int` - absolute intensity changes (ΔF).
-- `dF/F0_int` - relative intensity changes (ΔF/F0).
-
+The output CSV contains:
+- `id` & `lab_id`: source Image and Labels layer names.
+- `roi`: ROI index.
+- `dist`: average distance to stimulation point (if enabled).
+- `index` & `time`: frame indices and timestamps.
+- `abs_int`, `dF_int`, `dF/F0_int`: absolute, differential, and relative intensities.
+- `base`: the baseline estimation method used (`simple` or `dietrich`).
 
 ---
-
 
 ## How to Cite
 If you use this plugin in your work, please cite the following paper:

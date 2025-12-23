@@ -37,13 +37,12 @@ DEFAULT_FRET_CONFIG_PATH = pathlib.Path(__file__).parent / '_e_fret_coefs.yaml'
 
 @magic_factory(call_button='Preprocess stack',
                stack_order={"choices": ['TCXY', 'CTXY']},
-               correction_method={"choices": ['exp', 'bi_exp']},)
+               correction_method={"choices": ['exp', 'biexp', '1st']},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
                    median_filter:bool=False, median_kernel:int=2,
                    background_substraction:bool=True,
                    photobleaching_correction:bool=False,
-                   use_correction_mask:bool=False,
                    correction_mask:Labels=None,
                    correction_method:str='exp',
                    drop_frames:bool=False,
@@ -74,21 +73,24 @@ def split_channels(viewer: Viewer, img:Image,
                 if background_substraction:
                     ch_img = utils.back_substr(ch_img, percentile=1.0)
                 if photobleaching_correction:
-                    if correction_mask is not None and use_correction_mask:
+                    if correction_mask is not None:
                         pb_mask = correction_mask.data
-                        show_info(f'{ch_suffix} photobleaching correction with mask {correction_mask.name}')
+                        print('a')
+                        show_info(f'Photobleaching correction with {correction_mask.name} mask')
                     else:
-                        pb_mask = ch_img[:,:,0] > filters.threshold_otsu(ch_img[:,:,0])
-                        show_info(f'{ch_suffix} photobleaching correction with Otsu mask')
-                    ch_img,_,r_corr = utils.pb_exp_correction(input_img=ch_img,
-                                                              mask=pb_mask,
-                                                              method=correction_method)
-                    show_info(f'{correction_method} photobleaching correction, r^2={r_corr}')
+                        pb_mask = ch_img[0,:,:] > filters.threshold_otsu(ch_img[:,:,0])
+                        print('b')
+                        show_info('Photobleaching correction with 1st frame Otsu mask')
+                    ch_img,_,corr_metric = utils.pb_correction(input_img=ch_img,
+                                                               mask=pb_mask,
+                                                               method=correction_method)
+                    ch_suffix = ch_suffix + '_' + correction_method
+                    show_info(f'{correction_method} photobleaching correction, ' + corr_metric)
                 if frames_crop != 0:
                     yo, xo = ch_img.shape[1:]
                     ch_img = ch_img[:,frames_crop:yo-frames_crop,frames_crop:xo-frames_crop]
                 end = time.perf_counter()
-                show_info(f'{ch_suffix} preprocessing time: {end - start:.2f} s, shape {ch_img.shape}, data type {ch_img.dtype}')
+                show_info(f'{img.name+ch_suffix} preprocessing time: {end - start:.2f} s, shape {ch_img.shape}, data type {ch_img.dtype}')
                 return (ch_img, img.name+ch_suffix)
 
             show_info(f'{img.name}: preprocessing started, data type {img.data.dtype}, shape {img.data.shape}')
