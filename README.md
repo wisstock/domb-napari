@@ -19,6 +19,23 @@ This plugin offers widgets specifically designed to analyze the redistribution o
 ![](https://raw.githubusercontent.com/wisstock/domb-napari/master/images/translocation.gif)
 __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon NMDA application__
 
+### Plugin Menus
+The plugin widgets are distributed across the following napari `Layers` menus:
+
+- **Visualize**
+    - `Labels Profiles` submenu: _ROIs profiles_, _Multiple img stat profiles_, _Multiple labels stat profiles_
+- **Data**
+    - `Preprocessing` submenu: _Multichannel stack preprocessing_, _Dual-view stack registration_
+    - _Save Data Frame_
+- **Measure**
+    - _Red-green series_
+    - _ΔF series_
+    - `FRET` submenu: _E-FRET estimation_, _E-FRET G-factor estimation_, _E-FRET crosstalk estimation_
+- **Segment**
+    - _Dot-patterns masking_
+    - _Up masking_
+    - _Intensity masking_
+
 ### Plugin Structure
 ``` mermaid
 graph TD
@@ -70,6 +87,7 @@ Segmentation ==> Vis
 FRET ==> Vis
 
 ```
+
 
 ### E-FRET Module Structure
 ``` mermaid
