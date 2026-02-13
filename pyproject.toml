@@ -1,10 +1,10 @@
 [project]
 name = "domb-napari"
-version = "0.5.2"
+version = "0.5.1"
 authors = [
   {name = "Borys Olifirov", email = "omnia.faty@gmail.com"}
 ]
-description = "napari plugin for analyzing the redistribution of fluorescence-labeled proteins"
+description = "napari plugin for analysing the redistribution and interaction of fluorescence-labelled proteins"
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">= 3.10"
 license = "MIT"
