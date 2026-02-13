@@ -40,7 +40,7 @@ Test-test-test
 
 Test-test-test
 
-Despite this, ratiometric FRET lacks open-source, user-friendly tools for automated data processing and visualization. Existing pipelines often rely on MATLAB `[@Nagy:2016; @Muller:2025]`, which is extensible but proprietary software, or ImageJ `[@Feige:2005; @Hachet:2006; @Rebenku:2023]`, which is open-source but Java-based software, making it difficult to modify or create analysis pipelines. Although ImageJ supports Python integration through Jython, this is limited to Python 2 and does not allow the use of external Python packages such as numpy, scipy, pandas, etc.
+Despite this, ratiometric FRET lacks open-source, user-friendly tools for automated data processing and visualization. Existing pipelines often rely on MATLAB [@Nagy:2016; @Muller:2025], which is extensible but proprietary software, or ImageJ [@Feige:2005; @Hachet:2006; @Rebenku:2023], which is open-source but Java-based software, making it difficult to modify or create analysis pipelines. Although ImageJ supports Python integration through Jython, this is limited to Python 2 and does not allow the use of external Python packages such as numpy, scipy, pandas, etc.
 
 
 # Quantitative FRET analysis with `e_fret` module
