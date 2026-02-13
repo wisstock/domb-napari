@@ -40,7 +40,16 @@ Test-test-test
 
 Test-test-test
 
-Despite this, ratiometric FRET lacks open-source, user-friendly tools for automated data processing and visualization. Existing pipelines often rely on MATLAB [@Nagy:2016; @Muller:2025], which is extensible but proprietary software, or ImageJ [@Feige:2005; @Hachet:2006; @Rebenku:2023], which is open-source but Java-based software, making it difficult to modify or create analysis pipelines. Although ImageJ supports Python integration through Jython, this is limited to Python 2 and does not allow the use of external Python packages such as numpy, scipy, pandas, etc.
+Despite this, ratiometric FRET lacks open-source, user-friendly tools for automated data processing and visualization. Existing pipelines often rely on MATLAB [@Nagy2016; @Muller2025], which is extensible but proprietary software, or ImageJ [@Feige2005; @Hachet2006; @Rebenku2023], which is open-source but Java-based software, making it difficult to modify or create analysis pipelines. Although ImageJ supports Python integration through Jython, this is limited to Python 2 and does not allow the use of external Python packages such as numpy, scipy, pandas, etc.
+
+
+# Fluorescence redistribution analysis toolset for napari
+
+Test-test-test
+
+![Fluorescence redistribution analysis pipeline](fig1.png)
+
+Test-test-test
 
 
 # Quantitative FRET analysis with `e_fret` module
@@ -52,13 +61,9 @@ $$E_{D} = \frac{I_{FRET}}{I_{D}^{tot}} = \frac{F_c / G}{F_c / G + I_{DD}} \label
 $$E_{A} = \frac{I_{FRET}}{I_{A}^{tot}} = \frac{\Xi F_c}{aI_{AA}} \label{eq:e_a}$$
 
 
-# Fluorescence redistribution analysis toolset
-
-
 # AI usage disclosure
 
 A generative AI model (Gemini 3 Pro) was used for the final code review, formatting and proofreading of the documentation and docstrings. A specialised AI model (DeepL) was used to proofread the main text. The authors declare that all code and text were manually inspected and verified by humans, and that they bear full responsibility for the content.
-
 
 
 # Acknowledgements
