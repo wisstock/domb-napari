@@ -57,11 +57,9 @@ The key element of the `domb-napari` plugin is the "red-green" images ($I_{RG}$)
 
 Users can adjust the detection sensitivity to specific event kinetics by changing three parameters: the sizes of the averaging windows (frame intervals $\[r_{0}:r\]$ and $\[l_{0}:l\]$) and the frame shift ($s$) between the windows. Fast events are best detected using short, or single-frame, windows with no spacer, which effectively turns the estimation into a temporal derivative; a long shift and larger window sizes are suitable for detecting slow transient changes [^1]:
 
-$$
-I_{RG} = \bar{I}_{right} - \bar{I}_{left}  = \frac{1}{r - r_0}\sum_{t=r_0+s}^{r+s} I_{t} - \frac{1}{l - l_0}\sum_{t=l_0}^{l} I_{t}
-$$
-
 [^1]: In this context, the terms "fast" and "slow" refer to the relationship between the speed of the biological process and the speed of data acquisition, rather than the actual speed of the process itself.
+
+$$I_{RG} = \bar{I}_{right} - \bar{I}_{left}  = \frac{1}{r - r_0}\sum_{t=r_0+s}^{r+s} I_{t} - \frac{1}{l - l_0}\sum_{t=l_0}^{l} I_{t}$$
 
 This approach has been previously implemented and successfully applied in our laboratory's research [@Dovgan2010; @Osypenko2019]. The plugin's additional functionality, which leverages the `scipy` and `scikit-image`, includes:
 
@@ -71,6 +69,7 @@ This approach has been previously implemented and successfully applied in our la
 - __Data Export:__ Exporting ROI intensity values as tidy CSV data frames.
 
 By combining all these steps on multichannel data (Fig. 1A), the plugin enables simultaneous analysis of the dynamics of the target of interest using "red-green" images (Fig. 1B). This analysis can be performed in combination with features detected on an optional reference channels (Fig. 1C). The resulting output may serve as the initial input for subsequent, more specialised analysis workflows. Furthermore, the use of Numba's Just-In-Time (JIT) compilation optimises array operations, leading to improved performance in fast, repetitive time-series analysis [@Lam2015].
+
 
 
 ![Fig. 1. Express analysis of the fluorescence redistribution in the live-cell imaging data. Adapted from [@Olifirov2025]](fig1.png)
