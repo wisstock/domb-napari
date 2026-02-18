@@ -55,7 +55,7 @@ This primary feature is integrated with additional functionality for detecting a
 
 The key element of the `domb-napari` plugin is the "red-green" images ($I_{RG}$), which are named according to a lookup table in which red indicates positive changes and green represents negative changes. This image is a pixel-by-pixel difference between the averaged intensity of a right (later in time, $\bar{I}_{right}$) and a left (earlier in time, $\bar{I}_{left}$) time windows.
 
-Users can adjust the detection sensitivity to specific event kinetics by changing three parameters: the sizes of the averaging windows (frame intervals $\[r_{0}:r\]$ and $\[l_{0}:l\]$) and the frame shift ($s$) between the windows. Fast events are best detected using short, or single-frame, windows with no spacer, which effectively turns the estimation into a temporal derivative; a long shift and larger window sizes are suitable for detecting slow transient changes [^1]:
+Users can adjust the detection sensitivity to specific event kinetics by changing three parameters: the sizes of the averaging windows (frame intervals $[r_{0}:r]$ and $[l_{0}:l]$) and the frame shift ($s$) between the windows. Fast events are best detected using short, or single-frame, windows with no spacer, which effectively turns the estimation into a temporal derivative; a long shift and larger window sizes are suitable for detecting slow transient changes [^1]:
 
 [^1]: In this context, the terms "fast" and "slow" refer to the relationship between the speed of the biological process and the speed of data acquisition, rather than the actual speed of the process itself.
 
