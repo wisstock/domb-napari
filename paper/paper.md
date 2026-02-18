@@ -33,11 +33,7 @@ bibliography: paper.bib
 
 # Summary
 
-In today's high-throughput-focused research environment, simple and reliable exploratory analysis of experimental data remains important. We have developed a toolset for the rapid analysis of live-cell fluorescence imaging data, with a specific focus on visualising and detecting dynamic intracellular processes.
-
-This toolset's core functionality includes two main areas. First, it offers simple tools for detecting fluorescence redistribution using derivative images to visualise and quantify the fluorescence intensity changes over time series. Second, it includes an end-to-end pipeline for Förster Resonance Energy Transfer (FRET) experiments, providing a set of functions for calibration and estimation using two well-defined ratiometric methods. Combined with basic functions for segmentation, plotting, and data export, this provides a complete working environment for analysing live-cell imaging experiments. The implemented methods are simple and robust, making them broadly applicable across various biological domains, including neuroscience, biophysics, and cytology.
-
-The main tool, `domb-napari`, is developed as a plugin for napari, an open-source multidimensional image viewer, ensuring accessibility for biologists without coding expertise. Additionally, the functions specifically for FRET calibration and estimation are available as a standalone Python module, which can be used separately for greater flexibility.
+In today's high-throughput-focused research environment, simple and reliable exploratory analysis of experimental data remains important. We have developed a toolset for the rapid analysis of live-cell fluorescence imaging data, with a specific focus on visualising and detecting dynamic intracellular processes. This toolset's core functionality includes two main areas. First, it offers simple tools for detecting fluorescence redistribution using derivative images to visualise and quantify the fluorescence intensity changes over time series. Second, it includes an end-to-end pipeline for Förster Resonance Energy Transfer (FRET) experiments, providing a set of functions for calibration and estimation using two well-defined ratiometric methods. Combined with basic functions for segmentation, plotting, and data export, this provides a complete working environment for analysing live-cell imaging experiments. The implemented methods are simple and robust, making them broadly applicable across various biological domains, including neuroscience, biophysics, and cytology. The main tool, `domb-napari`, is developed as a plugin for napari, an open-source multidimensional image viewer, ensuring accessibility for biologists without coding expertise. Additionally, the functions specifically for FRET calibration and estimation are available as a standalone Python module, which can be used separately for greater flexibility.
 
 
 # Statement of need
@@ -58,6 +54,8 @@ The key element of the `domb-napari` plugin is the "red-green" images ($I_{RG}$)
 Users can adjust the detection sensitivity to specific event kinetics by changing three parameters: the sizes of the averaging windows (frame intervals $[r_{0}:r]$ and $[l_{0}:l]$) and the frame shift ($s$) between the windows. Fast events are best detected using short, or single-frame, windows with no spacer, which effectively turns the estimation into a temporal derivative; a long shift and larger window sizes are suitable for detecting slow transient changes [^1]:
 
 [^1]: In this context, the terms "fast" and "slow" refer to the relationship between the speed of the biological process and the speed of data acquisition, rather than the actual speed of the process itself.
+
+$$I_{RG} = \bar{I}_{right} - \bar{I}_{left}  = \frac{1}{r - r_0}\sum_{t=r_0+s}^{r+s} I_{t} - \frac{1}{l - l_0}\sum_{t=l_0}^{l} I_{t}$$
 
 This approach has been previously implemented and successfully applied in our laboratory's research [@Dovgan2010; @Osypenko2019]. The plugin's additional functionality, which leverages the `scipy` and `scikit-image`libraries, includes:
 
