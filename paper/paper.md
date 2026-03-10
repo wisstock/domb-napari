@@ -33,7 +33,7 @@ bibliography: paper.bib
 
 # Summary
 
-In today's high-throughput-focused research environment, simple and reliable exploratory analysis of experimental data remains important. We have developed a toolset for the rapid analysis of live-cell fluorescence imaging data, with a specific focus on visualising and detecting dynamic intracellular processes. This toolset's core functionality includes two main areas. First, it offers simple tools for detecting fluorescence intensity redistribution using derivative images to visualise and quantify the fluorescence intensity changes over time series. Second, it includes an end-to-end pipeline for Förster Resonance Energy Transfer (FRET) experiments, providing a set of functions for calibration and estimation using two well-defined ratiometric methods. Combined with basic functions for segmentation, plotting, and data export, this provides a complete working environment for analysing results of live-cell imaging experiments. The implemented methods are simple and robust, making them broadly applicable across various biological fields. The `domb-napari` is developed as a plugin for napari, an open-source multidimensional image viewer, ensuring accessibility for biologists without coding skills. Additionally, the functions specifically developed for FRET calibration and estimation are available as a standalone Python module to secure better flexibility of the toolset.
+In today's high-throughput-focused research environment, simple and reliable exploratory analysis of experimental data remains important. We address this need with a developed toolset designed for the rapid analysis of live-cell fluorescence imaging data. Specifically focusing on the visualisation and detection of dynamic intracellular processes, the core functionality of this toolset includes two main parts. First, it offers simple tools for detecting fluorescence intensity redistribution using derivative images to visualise and quantify the fluorescence intensity changes over time series. Second, it includes an end-to-end pipeline for Förster Resonance Energy Transfer (FRET) experiments, providing a set of functions for calibration and estimation using two well-defined ratiometric methods. Combined with basic functions for segmentation, plotting, and data export, this provides a complete working environment for analysing results of live-cell imaging experiments. The implemented methods are simple and robust, making them broadly applicable across various biological fields. The `domb-napari` is developed as a plugin for napari, an open-source multidimensional image viewer, ensuring accessibility for biologists without coding skills. Additionally, the functions specifically developed for FRET calibration and estimation are available as a standalone Python module to secure better flexibility of the toolset.
 
 
 # Statement of need
@@ -52,8 +52,10 @@ Currently, over 500 plugins are available for napari; however, there is a notabl
 
 
 # Software design
+
 ## Plugin functions overview
-The `domb-napari` plugin offers a full workflow for the analysis of spectral time-series imaging data. It allows researchers to benefit from interactive data analysis capabilities of the napari, while also enabling the export of results as tidy CSV data frames for further downstream analysis. Performance for fast, repetitive time-series analysis is enhanced by Numba's Just-In-Time (JIT) compilation for optimised array operations [@Lam2015]. The general toolset of the plugin, built upon the `dipy` [@Garyfallidis2014], `scipy`, and `scikit-image` libraries, includes:
+
+The `domb-napari` plugin offers a full workflow for the analysis of spectral time-series imaging data. It allows researchers to benefit from interactive data analysis capabilities of the napari, while also enabling the export of results as tidy CSV data frames for further downstream analysis. Performance for fast, repetitive time-series analysis is enhanced by Numba's Just-In-Time (JIT) compilation for optimised array operations [@Lam2015]. The general toolset of the plugin, built upon the `scipy`, `scikit-image`, and `dipy` [@Garyfallidis2014] libraries, includes:
 
 - __Data Preprocessing:__ Simple spectral time-series preprocessing, including background correction, filtering, and spectral channels registration.
 - __Feature Detection:__ Intensity-based segmentation and local maxima detection methods.
@@ -61,7 +63,7 @@ The `domb-napari` plugin offers a full workflow for the analysis of spectral tim
 - __Data Export:__ Exporting ROI intensity values as tidy CSV data frames.
 
 
-## Fluorescence redistribution analysis toolset
+## Fluorescence redistribution analysis
 
 One of the key elements of the plugin is the "red-green" images ($I_{RG}$). It is named according to a lookup table in which red indicates positive and green indicates negative changes in the fluorescence. Thus, the "red-green" image represents a pixel-by-pixel visualisation of the difference between the intensity of a right (later in time, $\bar{I}_{right}$) and a left (earlier in time, $\bar{I}_{left}$) time windows. Users can adjust the detection sensitivity to specific event kinetics by changing three parameters: the number of frames averaged for the right and left windows (frame intervals $[r_{0}:r]$ and $[l_{0}:l]$) and the frame shift ($s$) between the windows. Fast events are best detected using short, or single-frame, with no spacer, which effectively turns the estimation into a temporal derivative; a long shift and a larger number of averaged frames  are suitable for detecting slow transient changes [^1]:
 
@@ -69,10 +71,9 @@ One of the key elements of the plugin is the "red-green" images ($I_{RG}$). It i
 
 $$I_{RG} = \bar{I}_{right} - \bar{I}_{left}  = \frac{1}{r - r_0}\sum_{t=r_0+s}^{r+s} I_{t} - \frac{1}{l - l_0}\sum_{t=l_0}^{l} I_{t}$$
 
-This approach has been previously implemented and successfully applied in our laboratory's research [@Dovgan2010; @Osypenko2019]. By combining all these steps on multichannel data (Fig. 1A), the plugin enables simultaneous analysis of the dynamics of the target of interest using "red-green" images (Fig. 1B). This analysis can be performed in combination with features detected in optional reference channels (Fig. 1C). The resulting output may serve as the initial input for subsequent, more specialised analysis workflows.
+This approach has been previously implemented and successfully applied in our laboratory's research [@Dovgan2010; @Osypenko2019]. By combining all these steps on multichannel data (Fig. 1A), the plugin enables simultaneous analysis of the dynamics of the target of interest using differential "red-green" images (Fig. 1B). This analysis can be performed in combination with features detected in optional reference channels (Fig. 1C). The resulting output may serve as the initial input for subsequent, more specialised analysis workflows.
 
 ![Fig. 1. Rapid analysis of the protein (HPCA) redistribution in the dendritic tree of cultured hippocampal neuron from/to postsynaptic densities labelled by PSD95 in the live-cell imaging data. Adapted from [@Olifirov2025]](fig1.png)
-
 
 ## Quantitative FRET analysis with `e_fret` module
 
@@ -102,14 +103,14 @@ $$G = \frac{\Delta F_{c}}{\Delta I_{DD}} = \frac{F_{c} - F_{c}^{post}}{I_{DD}^{p
 
 Chen et al. proposed an alternative method for estimating the $G$ factor based on comparing FRET values from two calibration donor-acceptor tandems [@Chen2006]. These tandems are characterised by distinct distances between the FRET pair fluorophores, resulting in different FRET efficiencies. By relating the samples parameters for the tandem with higher ($F_{c}^{high}$, $I_{DD}^{high}$, and $I_{AA}^{high}$) and lower ($F_{c}^{low}$, $I_{DD}^{low}$, and $I_{AA}^{low}$) values, it is possible to accurately estimate the $G$ factor for a specific FRET pair:
 
-$$G = \frac{F_{c}^{high} / I_{AA}^{high} - F_{c}^{low} / I_{AA}^{low}}{I_{DD}^{low} / I_{AA}^{low} - I_{DD}^{high} / I_{AA}^{high}}$$
+$$G = \frac{F_{c}^{high} / I_{AA}^{high} - F_{c}^{low} / I_{AA}^{low}}{I_{DD}^{low} / I_{AA}^{low} - I_{DD}^{high} / I_{AA}^{high}}$$  
 
-Module performance is optimised for pixel-wise operations using JIT compilation functions provided by Numba. For researchers without coding expertise, all the described functionality is conveniently accessible as a set of corresponding widgets within the `domb-napari` plugin.
+Module performance is optimised for pixel-wise operations using JIT compilation functions provided by Numba. For researchers without coding expertise, all the described functionality is conveniently accessible as a set of corresponding widgets within the `domb-napari` plugin. 
 
 
 # Research impact statement
 
-The plugin is currently used in published research [@Olifirov2025] and has been successfully tested on unpublished mid-scale spectral imaging data acquired using widefield, laser scanning confocal, and spinning disk confocal microscopes.  
+The plugin is currently used in published research [@Olifirov2025] and has been successfully applied to unpublished mid-scale spectral imaging data acquired using widefield, laser scanning confocal, and spinning disk confocal microscopes. 
 
 
 # AI usage disclosure
@@ -123,6 +124,8 @@ All animal experiments were approved by the host institution and conducted in co
 
 
 # Acknowledgements
+
+Authors deeply appreciated Dr. Pavel Belan and Dr. Volodymyr Cherkas for their advice and support.
 
 This work was funded by the long-term program of support of the Ukrainian research teams at the Polish Academy of Sciences, carried out in collaboration with the U.S. National Academy of Sciences, with the financial support of external partners (PAN.BFB.S.BWZ.405.022.2023), and the National Academy of Science of Ukraine grants (0124U001556, 0124U001557, 0126U002342).
 
