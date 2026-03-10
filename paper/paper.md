@@ -73,7 +73,7 @@ $$I_{RG} = \bar{I}_{right} - \bar{I}_{left}  = \frac{1}{r - r_0}\sum_{t=r_0+s}^{
 
 This approach has been previously implemented and successfully applied in our laboratory's research [@Dovgan2010; @Osypenko2019]. By combining all these steps on multichannel data (Fig. 1A), the plugin enables simultaneous analysis of the dynamics of the target of interest using differential "red-green" images (Fig. 1B). This analysis can be performed in combination with features detected in optional reference channels (Fig. 1C). The resulting output may serve as the initial input for subsequent, more specialised analysis workflows.
 
-![Fig. 1. Rapid analysis of the protein (HPCA) redistribution in the dendritic tree of cultured hippocampal neuron from/to postsynaptic densities labelled by PSD95 in the live-cell imaging data. Adapted from [@Olifirov2025]](fig1.png)
+![Rapid analysis of the protein (HPCA) redistribution in the dendritic tree of cultured hippocampal neuron from/to postsynaptic densities labelled by PSD95 in the live-cell imaging data. Adapted from [@Olifirov2025]](fig1.png)
 
 ## Quantitative FRET analysis with `e_fret` module
 
@@ -99,7 +99,7 @@ The `e_fret` module offers two methods for estimating the $G$ factor, both of wh
 
 $$G = \frac{\Delta F_{c}}{\Delta I_{DD}} = \frac{F_{c} - F_{c}^{post}}{I_{DD}^{post} - I_{DD}}$$
 
-![Fig. 2. Example of the FRET experiment design for $E_{D}$ estimation and corresponding classes of the `e_fret` module](fig2.png)
+![Example of the FRET experiment design for $E_{D}$ estimation and corresponding classes of the `e_fret` module](fig2.png)
 
 Chen et al. proposed an alternative method for estimating the $G$ factor based on comparing FRET values from two calibration donor-acceptor tandems [@Chen2006]. These tandems are characterised by distinct distances between the FRET pair fluorophores, resulting in different FRET efficiencies. By relating the samples parameters for the tandem with higher ($F_{c}^{high}$, $I_{DD}^{high}$, and $I_{AA}^{high}$) and lower ($F_{c}^{low}$, $I_{DD}^{low}$, and $I_{AA}^{low}$) values, it is possible to accurately estimate the $G$ factor for a specific FRET pair:
 
