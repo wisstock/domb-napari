@@ -25,8 +25,7 @@ from skimage import segmentation
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 
-from dipy.align.transforms import AffineTransform2D
-from dipy.align.imaffine import AffineRegistration
+from domb_napari._affine import AffineTransform2D, AffineRegistration
 
 import domb_napari._utils as utils
 import domb_napari._e_fret as e_fret

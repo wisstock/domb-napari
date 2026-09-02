@@ -1,6 +1,6 @@
 [project]
 name = "domb-napari"
-version = "0.5.1"
+version = "0.6.0"
 authors = [
   {name = "Borys Olifirov", email = "omnia.faty@gmail.com"}
 ]
@@ -28,7 +28,6 @@ classifiers = [
 
 dependencies = [
     "napari",
-    "dipy",
     "numpy",
     "scipy",
     "scikit-image",

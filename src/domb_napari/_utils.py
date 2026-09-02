@@ -10,7 +10,6 @@ from skimage import segmentation
 
 from scipy import ndimage as ndi
 from scipy import stats
-from scipy import stats
 from scipy import optimize
 
 import vispy.color
@@ -99,11 +98,8 @@ def pb_correction(input_img:np.ndarray, mask:np.ndarray, method:str='exp'):
         mask = mask.astype(bool)
     bleach_profile = np.mean(input_img, axis=(1,2), where=mask)
     
-    if method == 'exp' or method == 'biexp':
-        if method == 'exp':
-            func = exp
-        elif method == 'biexp':
-            func = bi_exp
+    if method in ('exp', 'biexp'):
+        func = exp if method == 'exp' else bi_exp
         x_profile = np.linspace(0, bleach_profile.shape[0], bleach_profile.shape[0])
         popt,_ = optimize.curve_fit(func, x_profile, bleach_profile)
         bleach_fit = np.vectorize(func)(x_profile, *popt)
