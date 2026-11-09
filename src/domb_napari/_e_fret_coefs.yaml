@@ -1,8 +1,16 @@
-ECFP/EFYP:
+# a  = I_DA(A) / I_AA(A)   acceptor cross-talk to DA channel
+# d  = I_DA(D) / I_DD(D)   donor cross-talk to DA channel
+# b  = I_DD(A) / I_AA(A)   acceptor cross-talk to DD channel (optional, 0 by default)
+# c  = I_AA(D) / I_DD(D)   donor cross-talk to AA channel (optional, 0 by default)
+# G  - gauge factor, required for E_D and Ecorr
+# xi - ratio of acceptor/donor extinction coefficients at donor excitation, required for E_A
+# null - coefficient is not defined
+
+ECFP/EYFP:
   a: 0.122
   d: 0.794
   G: 3.6
-  xi: 0          # not defined
+  xi: null
 
 TagBFP/mBaoJin:
   a: 0.014
@@ -13,5 +21,5 @@ TagBFP/mBaoJin:
 mBaoJin/TagRFP:
   a: 0.111
   d: 0.052
-  G: 0          # not defined
-  xi: 0.1293    # estimated from spectral data
+  G: null
+  xi: 0.1293     # estimated from spectral data

@@ -1,6 +1,6 @@
 [project]
 name = "domb-napari"
-version = "0.6.0"
+version = "0.7.0"
 authors = [
   {name = "Borys Olifirov", email = "omnia.faty@gmail.com"}
 ]
@@ -27,16 +27,21 @@ classifiers = [
 ]
 
 dependencies = [
-    "napari",
+    "napari>=0.5",
+    "magicgui",
+    "vispy",
     "numpy",
-    "scipy",
-    "scikit-image",
-    "tifffile",
+    "scipy>=1.11",
+    "scikit-image>=0.22",
     "pandas",
-    "matplotlib",
-    "numba",
-    "pybaselines"
+    "matplotlib>=3.9",
+    "numba>=0.59",
+    "pybaselines",
+    "pyyaml"
 ]
+
+[project.optional-dependencies]
+testing = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/wisstock/domb-napari"
@@ -54,9 +59,13 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["domb_napari*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
 
 [project.entry-points."napari.manifest"]
 domb-napari = "domb_napari:napari.yaml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
