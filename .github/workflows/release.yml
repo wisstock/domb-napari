@@ -6,8 +6,12 @@ on:
       - '*'
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
     name: Build distribution
+    needs: test
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
