@@ -19,7 +19,7 @@ __Hippocalcin (neuronal calcium sensor) redistributes in dendritic branches upon
 ```
 pip install domb-napari
 ```
-Requires Python >= 3.10 and napari >= 0.5. Changes between versions are listed in [CHANGELOG.md](CHANGELOG.md).
+Requires Python >= 3.10 and napari >= 0.5.
 
 ## Data Conventions
 
