@@ -23,16 +23,41 @@ from ._common import start_worker, add_or_update_image
 # expected limit of scaling and shear between the sides of a dual-view splitter
 MAX_LINEAR_DEVIATION = 0.05
 
+# drop-down label -> core.preprocess method
+BACKGROUND_CHOICES = {'percentile': 'percentile',
+                      'histogram mode': 'mode',
+                      'labels layer': 'mask'}
 
-@magic_factory(call_button='Preprocess stack',
+
+def _split_channels_init(widget):
+    """ Shows only the parameters of the selected background method.
+
+    """
+    def _update(*_):
+        enabled = widget.background_substraction.value
+        method = widget.background_method.value
+        widget.background_method.visible = enabled
+        widget.background_percentile.visible = enabled and method == 'percentile'
+        widget.background_mask.visible = enabled and method == 'labels layer'
+
+    widget.background_substraction.changed.connect(_update)
+    widget.background_method.changed.connect(_update)
+    _update()
+
+
+@magic_factory(widget_init=_split_channels_init,
+               call_button='Preprocess stack',
                stack_order={"choices": ['TCXY', 'CTXY']},
                correction_method={"choices": ['exp', 'biexp', '1st']},
+               background_method={"choices": list(BACKGROUND_CHOICES), 'widget_type': 'ComboBox'},
                background_percentile={'min': 0.0, 'max': 100.0},)
 def split_channels(viewer: Viewer, img:Image,
                    stack_order:str='TCXY',
                    median_filter:bool=False, median_kernel:int=3,
                    background_substraction:bool=True,
+                   background_method:str='percentile',
                    background_percentile:float=1.0,
+                   background_mask:Labels=None,
                    photobleaching_correction:bool=False,
                    correction_mask:Labels=None,
                    correction_method:str='exp',
@@ -43,6 +68,19 @@ def split_channels(viewer: Viewer, img:Image,
         raise ValueError('Input image has to have 3 or 4 dimensions!')
     if drop_frames and len(frames_range) != 2:
         raise ValueError('List of indexes should has 2 elements!')
+    bg_method = BACKGROUND_CHOICES[background_method]
+    bg_mask = None
+    if background_substraction and bg_method == 'mask':
+        if background_mask is None:
+            raise ValueError('Select a Labels layer with the background area!')
+        bg_mask = np.asarray(background_mask.data) != 0    # all labels form one mask
+        if bg_mask.shape != img.data.shape[-2:]:
+            raise ValueError(f'Background mask shape {bg_mask.shape} and frame shape {img.data.shape[-2:]} are different!')
+        if not bg_mask.any():
+            raise ValueError(f'Background mask {background_mask.name} is empty!')
+    bg_info = {'percentile': f'{background_percentile:g} percentile',
+               'mode': 'histogram mode',
+               'mask': f'mean of {background_mask.name if background_mask is not None else ""} labels'}[bg_method]
     pb_mask_input = None if correction_mask is None else np.asarray(correction_mask.data)
     pb_mask_name = None if correction_mask is None else correction_mask.name
     img_name, img_data = img.name, img.data
@@ -60,7 +98,11 @@ def split_channels(viewer: Viewer, img:Image,
             if median_filter:
                 ch_img = preprocess.median_filter_stack(ch_img, median_kernel)
             if background_substraction:
-                ch_img = preprocess.back_substr(ch_img, percentile=background_percentile)
+                ch_img, bg_levels = preprocess.back_substr(ch_img, percentile=background_percentile,
+                                                           method=bg_method, mask=bg_mask,
+                                                           return_levels=True)
+                show_info(f'{img_name+ch_suffix}: background ({bg_info}) {np.mean(bg_levels):.2f}, '
+                          f'range {np.min(bg_levels):.2f}-{np.max(bg_levels):.2f}')
             if photobleaching_correction:
                 if pb_mask_input is not None:
                     pb_mask = pb_mask_input

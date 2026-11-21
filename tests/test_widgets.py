@@ -112,6 +112,32 @@ def test_pipeline(viewer, tmp_path):
     dd, da, aa = (v.layers[f'cell_algn_ch{ch}'] for ch in (0, 1, 3))
     assert dd.data.dtype == np.float32 and dd.data.min() < 0
 
+    # background options of the preprocessing widget
+    bg_labels = np.zeros(algn.data.shape[-2:], dtype=np.int32)
+    bg_labels[:6, :6] = 1
+    bg_labels[-6:, -6:] = 3                     # several labels form one mask
+    bg_layer = v.add_labels(bg_labels, name='bg')
+    split = widgets['split_channels']
+    shown = lambda w: not w.native.isHidden()      # the widget itself is never shown in tests
+    assert not shown(split.background_mask) and shown(split.background_percentile)
+    split.background_method.value = 'labels layer'
+    assert shown(split.background_mask) and not shown(split.background_percentile)
+    split.background_substraction.value = False
+    assert not shown(split.background_method) and not shown(split.background_mask)
+    split.background_substraction.value = True
+    raw_mean = np.nanmean(algn.data[:, 3][:, bg_labels > 0])
+    _run(split, viewer=v, img=algn, background_method='labels layer', background_mask=bg_layer)
+    np.testing.assert_allclose(np.nanmean(v.layers['cell_algn_ch3'].data[:, bg_labels > 0]), 0.0, atol=1e-3)
+    assert raw_mean > 50
+    _run(split, viewer=v, img=algn, background_method='histogram mode')
+    assert abs(np.nanmedian(v.layers['cell_algn_ch3'].data[:, bg_labels > 0])) < 15
+    with pytest.raises(ValueError):
+        split(viewer=v, img=algn, background_method='labels layer', background_mask=None)
+    with pytest.raises(ValueError):
+        split(viewer=v, img=raw, background_method='labels layer', background_mask=bg_layer)
+    split.background_method.value = 'percentile'
+    _run(split, viewer=v, img=algn, median_filter=True)
+
     ctxy = v.add_image(np.moveaxis(raw.data, 0, 1), name='ctxy')
     _run(widgets['split_channels'], viewer=v, img=ctxy, stack_order='CTXY',
          photobleaching_correction=True, drop_frames=True, frames_range=[0, 6], frames_crop=2)

@@ -109,7 +109,10 @@ Output: 4D stack `_algn`.
 | `img` | | 4D or 3D stack |
 | `stack_order` | `TCXY` | axes order of a 4D stack, `TCXY` or `CTXY` |
 | `median_filter`, `median_kernel` | off, 3 | frame-by-frame median filter, kernel size in px |
-| `background_substraction`, `background_percentile` | on, 1.0 | subtract the percentile of intensity of every frame |
+| `background_substraction` | on | subtract the background level of every frame |
+| `background_method` | `percentile` | `percentile`, `histogram mode` or `labels layer`, see below |
+| `background_percentile` | 1.0 | `percentile`: percentile of frame intensity |
+| `background_mask` | | `labels layer`: Labels layer with background area, all labels are one mask |
 | `photobleaching_correction` | off | divide frames by the bleaching curve of the masked area |
 | `correction_mask` | | Labels layer for the bleaching curve, Otsu mask of the 1st frame if empty |
 | `correction_method` | `exp` | `exp`: $a e^{-bt}+c$; `biexp`: $a e^{-bt}+c e^{-dt}+e$; `1st`: raw curve |
@@ -117,6 +120,14 @@ Output: 4D stack `_algn`.
 | `frames_crop` | 0 | px removed from each side |
 
 Order of operations: frames drop, median filter, background, photobleaching, crop.
+
+Background level of every frame:
+
+| `background_method` | Level | Requirement | Bias |
+|---|---|---|---|
+| `percentile` | percentile of frame intensity | none | 1st percentile is about 2.3σ of background noise below its mean, positive offset remains |
+| `histogram mode` | highest peak of intensity histogram, sub-bin refinement | background pixels are the most frequent intensity | about −0.5 count for Poisson noise |
+| `labels layer` | mean intensity of the labeled pixels | cell-free area, same frame shape as `img` | none |
 
 > [!WARNING]
 > Photobleaching-corrected stacks are not valid inputs for E-FRET: every channel is rescaled with its own curve.
