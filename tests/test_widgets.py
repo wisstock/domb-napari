@@ -126,11 +126,13 @@ def test_pipeline(tmp_path):
     _run(w['cross_calc'], viewer=v, DD_img=dd, DA_img=da, AA_img=aa, mask=mask, saving_path=tmp_path)
     assert 'a_val' in pd.read_csv(tmp_path / 'cell_algn_A_summary.csv').columns
     g_args = dict(viewer=v, DD_img_high_FRET=dd, DA_img_high_FRET=da, AA_img_high_FRET=aa,
-                  DD_img_low_FRET=dd, DA_img_low_FRET=da, AA_img_low_FRET=aa, saving_path=tmp_path)
+                  DD_img_low_FRET=dd, DA_img_low_FRET=da, AA_img_low_FRET=aa, saving_path=tmp_path,
+                  config_mode='Default', fret_pair='TagBFP/mBaoJin')
+    assert 'TagBFP/mBaoJin' in w['g_calc'].fret_pair.choices
     _run(w['g_calc'], estimation_method='Zal', mask=mask, fragments_num=2, **g_args)
-    _run(w['g_calc'], estimation_method='Chen', mask_high=v.layers['cell_algn_seg_labels'], mask_low=mask,
-         write_to_config=True, config_path=tmp_path / 'user.yaml', fret_pair='test/pair', **g_args)
-    assert 'G' in yaml.safe_load(open(tmp_path / 'user.yaml'))['test/pair']
+    _run(w['g_calc'], estimation_method='Chen', mask_high=v.layers['cell_algn_seg_labels'], mask_low=mask, **g_args)
+    rois = pd.read_csv(tmp_path / 'cell_algn_G_rois.csv')
+    assert set(rois['construct']) == {'high', 'low'} and rois['fret_pair'][0] == 'TagBFP/mBaoJin'
 
     # series, masks, profiles, data frame
     _run(w['rel_series'], viewer=v, img=aa, values_mode='ΔF/F0', F0_win=3)

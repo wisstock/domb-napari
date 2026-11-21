@@ -283,7 +283,7 @@ Estimators (columns for coefficient `x`):
 | `x_ratio`, `x_ratio_err` | ratio of sums | consistent with noise in both channels, biased by an offset |
 | `x_ols`, `x_ols_err`, `x_ols_i`, `x_ols_i_err`, `x_r^2`, `x_p` | OLS | underestimates the slope if the reference channel is noisy; diagnostics |
 
-- Deming noise variance ratio is `mean(y)/mean(x)` (shot noise, same detector gain).
+- Deming noise variance ratio (`x_delta`) is measured from successive frames: `var = mean((I[t+1] - I[t])²) / 2` over the mask, which includes shot, background and read noise and ignores slow drift (`noise` = `temporal`). For a single frame it is approximated by `mean(y)/mean(x)` (`noise` = `poisson approximation`, warning).
 - Errors are jackknife standard errors, lower bounds for spatially correlated pixels.
 - An intercept far from zero indicates inaccurate background subtraction.
 
@@ -297,21 +297,24 @@ G_{Zal} = \frac{F_c - F_c^{post}}{D^{post} - D} \qquad G_{Chen} = \frac{F_{c,1}/
 | Parameter | Default | Description |
 |---|---|---|
 | `estimation_method` | `Zal` | `Zal` - acceptor photobleaching; `Chen` - two constructs |
+| `config_mode`, `config_path`, `fret_pair` | | as in E-FRET estimation; `a`, `d`, `b`, `c` of the pair are used |
 | `DD_img_high_FRET`, `DA_img_high_FRET`, `AA_img_high_FRET` | | 3D stacks: before bleaching / high FRET construct |
 | `DD_img_low_FRET`, `DA_img_low_FRET`, `AA_img_low_FRET` | | 3D stacks: after bleaching / low FRET construct |
 | `mask` | | `Zal`: Labels layer of ROIs or of the whole area |
 | `segment_mask`, `fragments_num` | on, 30 | `Zal`: split the mask into compact fragments of similar area (k-means) |
 | `mask_high`, `mask_low` | | `Chen`: Labels layers of ROIs for both samples |
-| `frames_to_average` | 1 | number of the first frames averaged, 0 - all |
-| `a`, `d`, `b`, `c` | | cross-talk coefficients |
-| `write_to_config`, `config_path`, `fret_pair` | off | write `a`, `d`, `b`, `c`, `G` to a YAML file |
+| `frames_to_average` | 0 | number of the first frames averaged, 0 - all |
 | `saving_path` | home | output directory |
 
-- `Zal`: `g_val` is the area-weighted ratio of sums over ROIs, `g_err` - jackknife error. `g_deming`, `g_ols`, `g_i` (OLS intercept), `g_r^2` are diagnostics: an intercept far from zero indicates wrong cross-talk coefficients, misregistration or donor bleaching.
+- `Zal`: `g_val`, `g_i` - slope and intercept of Deming regression of ΔF<sub>c</sub> on ΔD over ROIs, ROIs weighted by area; `g_err`, `g_i_err` - jackknife errors.
+  - Errors of ΔD and ΔF<sub>c</sub> are correlated ($I_{DD}$ enters both), so the regression is done for $\Delta F_c - s\,\Delta D$ with $s = \mathrm{cov}/\mathrm{var}(\Delta D)$ (`g_shift`), which is uncorrelated with ΔD, and $s$ is added back.
+  - Noise variances of ROI means are measured from successive frames of both stacks (`g_noise` = `temporal`); single frames use the shot noise approximation (warning). `g_delta` - the noise variance ratio.
+  - Diagnostics: `g_ratio` (ratio of sums, line through the origin), `g_ols`, `g_ols_i`, `g_r^2`. An intercept far from zero indicates wrong cross-talk coefficients, misregistration or donor bleaching.
+  - Deming slope uses the spread of ΔD over ROIs: with a narrow spread its error is several times larger than that of `g_ratio`.
 - `Chen`: every term is a ratio of sums over ROIs; `g_err`, `g_ci_low`, `g_ci_high` are bootstrap error and 95% interval.
 - ROIs of one cell are not independent: errors describe the within-sample variability only.
 
-Output: `{name}_G.csv`, plot, `_seg_labels` (if `segment_mask`).
+Output: `{name}_G.csv` (estimates), `{name}_G_rois.csv` (fit data: ROI label, area, ROI-mean `DD`, `DA`, `AA`, `D`, `A`, `Fc` of both images or constructs; `dD`, `dFc` for `Zal`; `D/A`, `Fc/A` for `Chen`), plot, `_seg_labels` (if `segment_mask`). Both tables start with `id`, `fret_pair`, `method`.
 
 ### E-FRET Estimation
 Pixel-wise estimation.
@@ -358,6 +361,10 @@ FRET_Pair_Name:
   xi: 0.0535    # required for E_A, null if not defined
 ```
 Bundled file: `domb_napari/_e_fret_coefs.yaml`.
+
+- Allowed keys: `a`, `d`, `b`, `c`, `G`, `xi` (case-sensitive); unknown and duplicate keys are errors.
+- Values: numbers or `null`. Strings that are numbers are accepted (YAML 1.1 reads `1e-2` as a string, write `1.0e-2`); booleans (`yes`, `no`, `on`, `off`) are errors.
+- The list of pairs follows edits of the file.
 
 ### Python API
 `domb_napari.core` does not import napari and can be used in scripts.

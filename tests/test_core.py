@@ -86,23 +86,29 @@ def test_fret_calibration(tmp_path):
     _, fit_arr, summary = fret.CrossTalkEstimation(np.ones((64, 64)), stack(np.full((64, 64), 5.0)) - 5.0,
                                                    stack(A * acceptor), stack(acceptor)).estimate_a()
     res = summary.iloc[0]
+    assert res['noise'] == 'temporal' and abs(res['b_val']) < 0.01
     assert res['a_val'] == pytest.approx(A, rel=0.03) and res['a_ratio'] == pytest.approx(A, rel=0.02)
     assert 0 <= res['a_r^2'] <= 1 and fit_arr.shape == (2, 64 * 64)
 
     # G by acceptor photobleaching (Zal)
     donor = rng.uniform(300, 1500, (60, 60))
-    high = [rng.poisson(i).astype(float) for i in simulate(donor, donor, 0.35)]
-    low = [rng.poisson(i).astype(float) for i in simulate(donor, donor, 0.35, intact=0.2)]
     labels = blocks(donor.shape)
-    g_df, fit_arr = fret.GFactorEstimation(labels, None, *high, *low, a_val=A, d_val=D).estimate_g_zal()
-    assert g_df['g_val'][0] == pytest.approx(G, rel=0.02) and fit_arr.shape == (2, 36)
-    assert abs(g_df['g_val'][0] - G) < 4 * g_df['g_err'][0]
+    stacks = lambda imgs: [rng.poisson(np.broadcast_to(i, (4,) + i.shape) + 100.0) - 100.0 for i in imgs]
+    g_df, fit_arr, roi_df = fret.GFactorEstimation(labels, None, *stacks(simulate(donor, donor, 0.35)),
+                                                   *stacks(simulate(donor, donor, 0.35, intact=0.2)),
+                                                   a_val=A, d_val=D).estimate_g_zal()
+    res = g_df.iloc[0]
+    assert res['g_noise'] == 'temporal' and res['g_shift'] == pytest.approx(D)
+    assert abs(res['g_val'] - G) < 4 * res['g_err'] and res['g_ratio'] == pytest.approx(G, rel=0.02)
+    assert fit_arr.shape == (2, 36) and len(roi_df) == 36 and 'dFc' in roi_df
 
     # G with two constructs (Chen), bootstrap error does not shrink with resamples
     high = [rng.poisson(i).astype(float) for i in simulate(donor, donor, 0.45)]
     low = [rng.poisson(i).astype(float) for i in simulate(donor, donor, 0.10)]
     est = fret.GFactorEstimation(labels, labels, *high, *low, a_val=A, d_val=D)
-    res = est.estimate_g_chen(n_boot=500)[0].iloc[0]
+    g_df, _, roi_df = est.estimate_g_chen(n_boot=500)
+    res = g_df.iloc[0]
+    assert len(roi_df) == 72 and set(roi_df['construct']) == {'high', 'low'}
     assert res['g_val'] == pytest.approx(G, rel=0.03) and res['g_ci_low'] < res['g_val'] < res['g_ci_high']
     assert est.estimate_g_chen(n_boot=4000)[0]['g_err'][0] == pytest.approx(res['g_err'], rel=0.25)
 
@@ -110,12 +116,18 @@ def test_fret_calibration(tmp_path):
     imgs = simulate(donor, donor / 1.7, 0.3)
     k_df, _ = fret.KFactorEstimation(labels, *imgs, a_val=A, d_val=D, G_val=G).estimate_k()
     assert k_df['k_val'][0] == pytest.approx(1.7, rel=1e-4)
+    # configuration: numbers as strings are accepted, booleans, unknown and duplicate keys are errors
     config = tmp_path / 'coefs.yaml'
-    fret.update_yaml(config, 'X/Y', a=0.1, d=0.2, G=3.0)
-    fret.update_yaml(config, 'Q/W', a=0.3, d=0.4)
-    fret.update_yaml(config, 'X/Y', G=4.0)
-    assert FRETCoefs.from_yaml(config, 'X/Y').G == 4.0 and FRETCoefs.from_yaml(config, 'Q/W').G is None
-
+    config.write_text('X/Y:\n  a: 1e-2\n  d: 0.2\n  G: null\nbool:\n  a: yes\n  d: 0.1\n'
+                      'typo:\n  a: 0.1\n  d: 0.2\n  g: 3\n', encoding='utf-8')
+    coefs = FRETCoefs.from_yaml(config, 'X/Y')
+    assert (coefs.a, coefs.d, coefs.b, coefs.G) == (0.01, 0.2, 0.0, None)
+    for pair in ('bool', 'typo'):
+        with pytest.raises(ValueError):
+            FRETCoefs.from_yaml(config, pair)
+    config.write_text('X/Y:\n  a: 0.1\n  d: 0.2\nX/Y:\n  a: 0.3\n  d: 0.4\n', encoding='utf-8')
+    with pytest.raises(ValueError):
+        fret.read_config(config)
 
 def test_preprocess():
     rng = np.random.default_rng(2)

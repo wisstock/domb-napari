@@ -76,12 +76,15 @@ class FRETCoefs():
     c: float = 0.0
 
     def __post_init__(self):
-        for name in ('a', 'd', 'b', 'c'):
+        for name in COEF_KEYS:
             val = getattr(self, name)
-            val = 0.0 if (val is None and name in ('b', 'c')) else val
-            if val is None or not np.isfinite(val):
-                raise ValueError(f'Coefficient {name} must be a finite number!')
-            setattr(self, name, float(val))
+            if val is None:
+                if name in ('a', 'd'):
+                    raise ValueError(f'Coefficient {name} is required!')
+                val = 0.0 if name in ('b', 'c') else None
+            else:
+                val = _coef_value(name, val)
+            setattr(self, name, val)
         if self.b * self.c >= 1.0:
             raise ValueError('Product of b and c must be less than 1!')
 
@@ -99,34 +102,77 @@ class FRETCoefs():
 
     @classmethod
     def from_yaml(cls, path, fret_pair:str):
-        """ Loads the coefficients of a FRET pair from a YAML file.
+        """ Loads the coefficients of a FRET pair from a YAML file, see read_config.
 
         """
-        import yaml
-        with open(path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
+        config = read_config(path)
         if fret_pair not in config:
             raise KeyError(f'FRET pair {fret_pair} is not in {path}!')
         pair = config[fret_pair]
-        return cls(a=pair.get('a'), d=pair.get('d'), G=pair.get('G'),
-                   xi=pair.get('xi'), b=pair.get('b', 0.0), c=pair.get('c', 0.0))
+        if not isinstance(pair, dict):
+            raise ValueError(f'{fret_pair}: coefficients must be a mapping, e.g. "a: 0.1"!')
+        unknown = sorted(str(key) for key in pair if key not in COEF_KEYS)
+        if unknown:
+            raise ValueError(f'{fret_pair}: unknown coefficients {unknown}, allowed are {list(COEF_KEYS)} (case-sensitive)!')
+        try:
+            return cls(**{key: pair.get(key) for key in COEF_KEYS})
+        except ValueError as err:
+            raise ValueError(f'{fret_pair}: {err}') from err
 
 
-def update_yaml(path, fret_pair:str, **coefs):
-    """ Writes coefficients of a FRET pair to a YAML file, other pairs are kept.
+COEF_KEYS = ('a', 'd', 'b', 'c', 'G', 'xi')
+
+
+def _coef_value(name:str, raw):
+    """ Coefficient as a finite float.
+
+    YAML 1.1 reads exponents without a dot (1e-2) as strings, so strings are
+    converted; booleans (YAML reads yes/no/on/off as booleans) are rejected.
 
     """
-    import os
+    if isinstance(raw, (bool, np.bool_)):
+        raise ValueError(f'Coefficient {name} = {raw!r} is a boolean, a number is required!')
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f'Coefficient {name} = {raw!r} is not a number!') from None
+    if not np.isfinite(val):
+        raise ValueError(f'Coefficient {name} must be a finite number!')
+    return val
+
+
+def read_config(path):
+    """ Reads a YAML configuration of FRET pairs.
+
+    The file has to be a mapping of pair names to mappings of coefficients.
+    Duplicate keys raise ValueError (plain YAML loaders silently keep the
+    last value). An empty file is an empty configuration.
+
+    Returns
+    -------
+    config: dict
+
+    """
     import yaml
-    config = {}
-    if os.path.isfile(path):
-        with open(path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f) or {}
-    pair = dict(config.get(fret_pair) or {})
-    pair.update({k: (None if v is None else float(v)) for k, v in coefs.items()})
-    config[fret_pair] = pair
-    with open(path, 'w', encoding='utf-8') as f:
-        yaml.safe_dump(config, f, sort_keys=False, allow_unicode=True)
+
+    class _Loader(yaml.SafeLoader):
+        pass
+
+    def _mapping(loader, node, deep=False):
+        keys = [loader.construct_object(key, deep=deep) for key, _ in node.value]
+        duplicates = sorted({str(key) for key in keys if keys.count(key) > 1})
+        if duplicates:
+            raise ValueError(f'Duplicate keys {duplicates} in {path}!')
+        return loader.construct_mapping(node, deep=deep)
+
+    _Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
+    with open(path, 'r', encoding='utf-8') as f:
+        config = yaml.load(f, Loader=_Loader)
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        raise ValueError(f'{path} must contain a mapping of FRET pairs!')
+    return config
 
 
 # --------------------------------------------------------------------------
@@ -452,6 +498,28 @@ def linear_fits(x, y, delta:float=None, w=None, n_groups:int=50, seed:int=0):
     return fit
 
 
+def frame_noise_variance(stack:np.ndarray):
+    """ Noise variance of single frames from successive differences.
+
+    var = mean((I[t+1] - I[t])^2) / 2 along the time axis, which is
+    insensitive to slow intensity drift (e.g. photobleaching) of a static
+    sample. NaN of the first axis-0 positions are ignored.
+
+    Parameters
+    ----------
+    stack: ndarray [t,...]
+        at least 2 frames
+
+    Returns
+    -------
+    var: ndarray [...]
+
+    """
+    stack = np.asarray(stack, dtype=np.float64)
+    with np.errstate(invalid='ignore'):
+        return np.nanmean(np.diff(stack, axis=0) ** 2, axis=0) / 2.0
+
+
 def _coef_row(name:str, fit:dict):
     """ Row of the calibration table for one coefficient.
 
@@ -461,7 +529,8 @@ def _coef_row(name:str, fit:dict):
             name + '_ratio': fit['ratio'], name + '_ratio_err': fit['ratio_err'],
             name + '_ols': fit['ols'], name + '_ols_err': fit['ols_err'],
             name + '_ols_i': fit['ols_i'], name + '_ols_i_err': fit['ols_i_err'],
-            name + '_r^2': fit['r2'], name + '_p': fit['p']}
+            name + '_r^2': fit['r2'], name + '_p': fit['p'],
+            name + '_delta': fit['delta']}
 
 
 def _mean_frames(img:np.ndarray, n_frames:int=None):
@@ -487,6 +556,11 @@ class CrossTalkEstimation():
     estimate ('_val') is the Deming regression slope, the ratio and OLS
     estimates are reported for diagnostics, see linear_fits. A non-zero
     intercept ('_i') points to an inaccurate background subtraction.
+
+    The ratio of noise variances of the Deming regression ('_delta') is
+    measured from successive frames, so it includes shot, background and
+    read noise ('noise' = 'temporal'). For a single frame the shot noise
+    approximation mean(y)/mean(x) is used ('noise' = 'poisson approximation').
 
     Parameters/attributes
     ----------
@@ -525,14 +599,32 @@ class CrossTalkEstimation():
             raise ValueError('Mask is empty!')
 
     @staticmethod
+    def _noise_ratios(img_ref, imgs, img_mask):
+        """ Ratios of noise variances var(y) / var(x) of the masked pixels.
+
+        Measured from successive frames if there are 2+ frames, the same
+        ratio holds for single frames and for time-averaged images. Otherwise
+        None (Deming regression falls back to the shot noise approximation).
+
+        """
+        if len(img_ref) < 2:
+            return [None] * len(imgs), 'poisson approximation'
+        var_x = np.nanmean(frame_noise_variance(img_ref[:, img_mask]))
+        ratios = [np.nanmean(frame_noise_variance(img[:, img_mask])) / var_x for img in imgs]
+        if not (var_x > 0 and all(np.isfinite(r) and r > 0 for r in ratios)):
+            return [None] * len(imgs), 'poisson approximation'
+        return ratios, 'temporal'
+
+    @staticmethod
     def _coef_calc(img_ref, img_prm, img_off, img_mask,
                    c_prm_name, c_off_name):
+        (delta_prm, delta_off), noise = CrossTalkEstimation._noise_ratios(img_ref, (img_prm, img_off), img_mask)
         rows = []
         for i in range(len(img_ref)):
             arr_ref = img_ref[i][img_mask]
             row = {'frame_n': i}
-            row.update(_coef_row(c_prm_name, linear_fits(arr_ref, img_prm[i][img_mask])))
-            row.update(_coef_row(c_off_name, linear_fits(arr_ref, img_off[i][img_mask])))
+            row.update(_coef_row(c_prm_name, linear_fits(arr_ref, img_prm[i][img_mask], delta=delta_prm)))
+            row.update(_coef_row(c_off_name, linear_fits(arr_ref, img_off[i][img_mask], delta=delta_off)))
             rows.append(row)
         coef_df = pd.DataFrame(rows)
 
@@ -540,9 +632,9 @@ class CrossTalkEstimation():
         ref_mean = _mean_frames(img_ref)[img_mask]
         prm_mean = _mean_frames(img_prm)[img_mask]
         off_mean = _mean_frames(img_off)[img_mask]
-        summary = {'n_frames': len(img_ref), 'n_px': int(np.sum(img_mask))}
-        for name, arr in ((c_prm_name, prm_mean), (c_off_name, off_mean)):
-            summary.update(_coef_row(name, linear_fits(ref_mean, arr)))
+        summary = {'n_frames': len(img_ref), 'n_px': int(np.sum(img_mask)), 'noise': noise}
+        for name, arr, delta in ((c_prm_name, prm_mean, delta_prm), (c_off_name, off_mean, delta_off)):
+            summary.update(_coef_row(name, linear_fits(ref_mean, arr, delta=delta)))
             frame_vals = coef_df[name + '_val'].to_numpy(dtype=np.float64)
             summary[name + '_frames_median'] = np.nanmedian(frame_vals)
             summary[name + '_frames_mad'] = stats.median_abs_deviation(frame_vals, nan_policy='omit')
@@ -629,13 +721,20 @@ class GFactorEstimation():
         if any(img is None for img in [h_dd_img, h_da_img, h_aa_img,
                                        l_dd_img, l_da_img, l_aa_img]):
             raise ValueError("All input images must be provided!")
-        self.h_dd_img, self.h_da_img, self.h_aa_img = [_mean_frames(img, n_frames) for img
-                                                       in (h_dd_img, h_da_img, h_aa_img)]
-        self.l_dd_img, self.l_da_img, self.l_aa_img = [_mean_frames(img, n_frames) for img
-                                                       in (l_dd_img, l_da_img, l_aa_img)]
+        raw_h = [np.asarray(img) for img in (h_dd_img, h_da_img, h_aa_img)]
+        raw_l = [np.asarray(img) for img in (l_dd_img, l_da_img, l_aa_img)]
+        self.h_dd_img, self.h_da_img, self.h_aa_img = [_mean_frames(img, n_frames) for img in raw_h]
+        self.l_dd_img, self.l_da_img, self.l_aa_img = [_mean_frames(img, n_frames) for img in raw_l]
+        # noise of the averaged images is measured from the stacks, see estimate_g_zal
+        self._raw = {}
+        for state, raw in (('h', raw_h), ('l', raw_l)):
+            if all(img.ndim == 3 and img.shape[0] >= 2 for img in raw):
+                n_avg = min(raw[0].shape[0], n_frames or raw[0].shape[0])
+                self._raw[state] = (raw, n_avg)
         self.coefs = FRETCoefs(a=a_val, d=d_val, b=b_val, c=c_val)
-        self.mask = mask
-        self.l_mask = l_mask if l_mask is not None else mask
+        as_labels = lambda m: np.asarray(m).astype(np.uint8) if np.asarray(m).dtype == bool else np.asarray(m)
+        self.mask = as_labels(mask)
+        self.l_mask = as_labels(l_mask) if l_mask is not None else self.mask
 
     def _signals(self):
         sig_h = _roi_intensities(self.mask, self.h_dd_img, self.h_da_img,
@@ -644,27 +743,77 @@ class GFactorEstimation():
                                  self.l_aa_img, self.coefs)
         return sig_h, sig_l
 
+    def _roi_noise(self, state:str, labels, sig):
+        """ Noise variances of the ROI means of DD, DA and AA [3,roi].
+
+        Measured from successive frames of the ROI mean profiles if the
+        stacks have 2+ frames, divided by the number of averaged frames.
+        Otherwise the shot noise approximation |mean| / area, which ignores
+        the background and read noise.
+
+        """
+        if state in self._raw:
+            stacks, n_avg = self._raw[state]
+            var = np.array([frame_noise_variance(labels_to_profiles(labels, st).T) for st in stacks]) / n_avg
+            if np.all(np.isfinite(var)) and np.all(var.sum(axis=1) > 0):
+                return var, 'temporal'
+        return np.array([np.abs(sig[key]) / sig['area'] for key in ('DD', 'DA', 'AA')]), 'poisson approximation'
+
+    def _zal_errors(self, sig_h, sig_l):
+        """ Variance of dD, covariance of dD and dFc, variance of dFc (pooled over ROIs).
+
+        Channel noise is independent, D = k(DD - b AA) and
+        Fc = DA + k(ac - d) DD + k(db - a) AA with k = 1 / (1 - bc).
+
+        """
+        cf = self.coefs
+        k = 1.0 / (1.0 - cf.b * cf.c)
+        c_d = np.array([k, 0.0, -k * cf.b])
+        c_fc = np.array([k * (cf.a * cf.c - cf.d), 1.0, k * (cf.d * cf.b - cf.a)])
+        var_x = var_fc = cov = 0.0
+        sources = set()
+        for state, sig, labels in (('h', sig_h, self.mask), ('l', sig_l, self.l_mask)):
+            var, source = self._roi_noise(state, labels, sig)
+            sources.add(source)
+            var = var.sum(axis=1)                    # pooled over ROIs
+            var_x += np.sum(c_d ** 2 * var)
+            var_fc += np.sum(c_fc ** 2 * var)
+            cov -= np.sum(c_d * c_fc * var)          # dD = D_l - D_h, dFc = Fc_h - Fc_l
+        source = 'temporal' if sources == {'temporal'} else 'poisson approximation'
+        return var_x, cov, var_fc, source
+
     def estimate_g_zal(self):
         """ Estimate G factor by acceptor photobleaching
 
-        G = (Fc - Fc_post) / (D_post - D) by definition, i.e. the line
-        dFc = G * dD goes through the origin. Both differences are noisy,
-        so the primary estimate ('g_val') is the area-weighted ratio of sums
-        over ROIs, which equals the ratio of the whole mask means. Deming
-        and OLS slopes with free intercept are reported for diagnostics:
-        an intercept far from zero points to wrong cross-talk coefficients,
-        misregistration of pre- and post-bleaching images or donor bleaching.
+        G is the slope of dFc against dD over ROIs, where
+        dFc = Fc - Fc_post and dD = D_post - D.
 
-        ROIs of the same cell are not independent, so 'g_err' (delete-one-ROI
-        jackknife) is the within-sample error only.
+        The primary estimate ('g_val') is the slope of Deming regression with
+        a free intercept ('g_i'), which is consistent when both differences
+        are noisy. Its errors are correlated (DD enters both dD and dFc), so
+        the regression is done for y = dFc - s * dD with s = cov / var(dD),
+        whose errors are uncorrelated with dD, and s is added back to the
+        slope. The noise variances are measured from successive frames
+        ('g_noise' = 'temporal') or, for single frames, approximated by the
+        shot noise ('g_noise' = 'poisson approximation'). ROIs are weighted
+        by area.
+
+        Diagnostics: 'g_ratio' (area-weighted ratio of sums, line through the
+        origin) and OLS. An intercept far from zero points to wrong cross-talk
+        coefficients, misregistration of pre- and post-bleaching images or
+        donor bleaching. ROIs of the same cell are not independent, so the
+        errors (delete-one-ROI jackknife) are the within-sample errors only.
 
         Returns
         -------
         g_df: pd.DataFrame
-            one row: g_val, g_err, g_deming, g_deming_err, g_ols, g_ols_err,
-            g_i, g_i_err, g_r^2, g_p, n_roi
+            one row: g_val, g_err, g_i, g_i_err, g_ratio, g_ratio_err,
+            g_ols, g_ols_err, g_ols_i, g_ols_i_err, g_r^2, g_p, g_delta,
+            g_shift, g_noise, n_roi
         fit_arr: np.ndarray [2,roi]
             (dD, dFc) of ROIs
+        roi_df: pd.DataFrame
+            ROI-mean DD, DA, AA, D, A, Fc of both images, dD, dFc
 
         """
         sig_h, sig_l = self._signals()
@@ -672,30 +821,25 @@ class GFactorEstimation():
             raise ValueError('The same ROIs must be used for both images in Zal method!')
         fc_delta = sig_h['Fc'] - sig_l['Fc']
         don_delta = sig_l['D'] - sig_h['D']
+        area = sig_h['area']
 
-        fit = linear_fits(don_delta, fc_delta, w=sig_h['area'], n_groups=don_delta.size)
+        fit = linear_fits(don_delta, fc_delta, w=area, n_groups=don_delta.size)
+        var_x, cov, var_fc, source = self._zal_errors(sig_h, sig_l)
+        shift = cov / var_x
+        delta = max((var_fc - cov ** 2 / var_x) / var_x, np.finfo(float).eps)
+        fit_dem = linear_fits(don_delta, fc_delta - shift * don_delta, delta=delta,
+                              w=area, n_groups=don_delta.size)
+        fit.update({'deming': fit_dem['deming'] + shift, 'deming_err': fit_dem['deming_err'],
+                    'deming_i': fit_dem['deming_i'], 'deming_i_err': fit_dem['deming_i_err'],
+                    'delta': delta})
+        row = _coef_row('g', fit)
+        row.update({'g_shift': shift, 'g_noise': source, 'n_roi': int(don_delta.size)})
 
-        # Deming regression needs independent errors of both variables, but
-        # the noise of DD enters dFc with the factor d. So the regression is
-        # done for dFc - d * dD = d(DA - a * A), which does not contain DD,
-        # and d is added back to the slope. The ratio of the shot noise
-        # variances is estimated from the mean intensities.
-        cf = self.coefs
-        var_y = sum(np.average(np.abs(s['DA']) + cf.a ** 2 * np.abs(s['AA']), weights=s['area'])
-                    for s in (sig_h, sig_l))
-        var_x = sum(np.average(np.abs(s['DD']), weights=s['area']) for s in (sig_h, sig_l))
-        fit_dem = linear_fits(don_delta, fc_delta - cf.d * don_delta,
-                              delta=var_y / var_x if var_x > 0 else 1.0,
-                              w=sig_h['area'], n_groups=don_delta.size)
-        fit['deming'], fit['deming_err'] = fit_dem['deming'] + cf.d, fit_dem['deming_err']
-
-        g_df = pd.DataFrame([{'g_val': fit['ratio'], 'g_err': fit['ratio_err'],
-                              'g_deming': fit['deming'], 'g_deming_err': fit['deming_err'],
-                              'g_ols': fit['ols'], 'g_ols_err': fit['ols_err'],
-                              'g_i': fit['ols_i'], 'g_i_err': fit['ols_i_err'],
-                              'g_r^2': fit['r2'], 'g_p': fit['p'],
-                              'n_roi': int(don_delta.size)}])
-        return (g_df, np.array([don_delta, fc_delta]))
+        roi_df = pd.DataFrame({'roi': label_ids(self.mask), 'area': area,
+                               **{f'{key}_high': sig_h[key] for key in ('DD', 'DA', 'AA', 'D', 'A', 'Fc')},
+                               **{f'{key}_low': sig_l[key] for key in ('DD', 'DA', 'AA', 'D', 'A', 'Fc')},
+                               'dD': don_delta, 'dFc': fc_delta})
+        return (pd.DataFrame([row]), np.array([don_delta, fc_delta]), roi_df)
 
     def estimate_g_chen(self, n_boot:int=2000, seed:int=0):
         """ Estimate G factor with two constructs of different FRET efficiency
@@ -712,6 +856,8 @@ class GFactorEstimation():
             fc_a_l (ratios of sums, D/A and Fc/A of both constructs), n_roi_h, n_roi_l
         fit_arr: tuple of np.ndarray [2,roi]
             (D/A, Fc/A) of ROIs of the high and of the low FRET constructs
+        roi_df: pd.DataFrame
+            ROI-mean DD, DA, AA, D, A, Fc, D/A, Fc/A of both constructs
 
         """
         sig_h, sig_l = self._signals()
@@ -744,10 +890,15 @@ class GFactorEstimation():
                               'd_a_h': tot_h[1] / tot_h[2], 'fc_a_h': tot_h[0] / tot_h[2],
                               'd_a_l': tot_l[1] / tot_l[2], 'fc_a_l': tot_l[0] / tot_l[2],
                               'n_roi_h': n_h, 'n_roi_l': n_l}])
+        tables = []
         with np.errstate(invalid='ignore', divide='ignore'):
             fit_arr = (np.array([sig_h['D'] / sig_h['A'], sig_h['Fc'] / sig_h['A']]),
                        np.array([sig_l['D'] / sig_l['A'], sig_l['Fc'] / sig_l['A']]))
-        return (g_df, fit_arr)
+            for name, sig, labels in (('high', sig_h, self.mask), ('low', sig_l, self.l_mask)):
+                tables.append(pd.DataFrame({'construct': name, 'roi': label_ids(labels), 'area': sig['area'],
+                                            **{key: sig[key] for key in ('DD', 'DA', 'AA', 'D', 'A', 'Fc')},
+                                            'D/A': sig['D'] / sig['A'], 'Fc/A': sig['Fc'] / sig['A']}))
+        return (g_df, fit_arr, pd.concat(tables, ignore_index=True))
 
 
 class KFactorEstimation():

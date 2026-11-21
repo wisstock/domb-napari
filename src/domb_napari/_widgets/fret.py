@@ -7,7 +7,6 @@ import time
 
 import numpy as np
 import pandas as pd
-import yaml
 from magicgui import magic_factory
 
 from napari import Viewer
@@ -33,6 +32,89 @@ def _check_3d(*layers):
 
 def _base_name(aa_layer):
     return aa_layer.name.replace('_ch3', '')
+
+
+# --------------------------------------------------------------------------
+# configuration of FRET pairs
+# --------------------------------------------------------------------------
+_PAIRS_CACHE = {}    # resolved path -> (modification time, pairs)
+
+
+def _read_pairs(path):
+    """ Names of FRET pairs in a YAML file, re-read when the file changes.
+
+    A file that cannot be parsed gives an empty list and one warning per
+    version of the file.
+
+    """
+    if path is None or not pathlib.Path(path).is_file():
+        return []
+    path = pathlib.Path(path).resolve()
+    mtime = path.stat().st_mtime
+    cached = _PAIRS_CACHE.get(path)
+    if cached is not None and cached[0] == mtime:
+        return list(cached[1])
+    try:
+        pairs = [str(name) for name, coefs in e_fret.read_config(path).items() if isinstance(coefs, dict)]
+    except Exception as err:
+        show_warning(f'Error loading {path.name}: {err}')
+        pairs = []
+    _PAIRS_CACHE[path] = (mtime, pairs)
+    return list(pairs)
+
+
+def _config_path(config_mode, config_path):
+    return DEFAULT_FRET_CONFIG_PATH if config_mode == 'Default' else config_path
+
+
+def _config_init(widget):
+    """ Keeps the list of FRET pairs in sync with the selected configuration file.
+
+    Choices are provided by a callable, so they survive the reset of choices
+    done by napari on every change of the layer list, and follow edits of
+    the file.
+
+    """
+    pairs = lambda: _read_pairs(_config_path(widget.config_mode.value, widget.config_path.value))
+    widget.fret_pair.choices = lambda _: pairs()
+
+    def _reload(*_):
+        widget.config_path.visible = widget.config_mode.value != 'Default'
+        selected = widget.fret_pair.value
+        widget.fret_pair.reset_choices()
+        if selected in pairs():
+            widget.fret_pair.value = selected
+
+    widget.config_mode.changed.connect(_reload)
+    widget.config_path.changed.connect(_reload)
+    _reload()
+
+
+def _load_coefs(config_mode, config_path, fret_pair, output_type):
+    """ Coefficients of the selected FRET pair, validated for the output type.
+
+    """
+    load_path = _config_path(config_mode, config_path)
+    if load_path is None or not pathlib.Path(load_path).is_file():
+        raise FileNotFoundError(f'Configuration file {load_path} not found!')
+    if not fret_pair:
+        raise ValueError('FRET pair is not selected!')
+    coefs = e_fret.FRETCoefs.from_yaml(load_path, fret_pair)
+    coefs.require(output_type)
+    show_info(f'{pathlib.Path(load_path).name}, {fret_pair}: a={coefs.a}, d={coefs.d}, b={coefs.b}, c={coefs.c}, G={coefs.G}, xi={coefs.xi}')
+    return coefs
+
+
+_PAIR_OPTIONS = dict(config_mode={'label': 'Config Mode', 'widget_type': 'RadioButtons',
+                                  'choices': ['Load', 'Default'],
+                                  'orientation': 'horizontal'},
+                     config_path={'label': 'Config Path', 'widget_type': 'FileEdit',
+                                  'mode': 'r', 'filter': '*.yaml;*.yml'},
+                     fret_pair={'label': 'FRET Pair', 'choices': [],
+                                'widget_type': 'ComboBox'})
+_CONFIG_OPTIONS = dict(_PAIR_OPTIONS,
+                       output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'],
+                                    'label': 'Estimation Method'})
 
 
 # --------------------------------------------------------------------------
@@ -63,8 +145,11 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
                   f'ratio {res[prm_name+"_ratio"]:.4f}, OLS {res[prm_name+"_ols"]:.4f}, '
                   f'intercept {res[prm_name+"_i"]:.2f}, r² {res[prm_name+"_r^2"]:.3f}; '
                   f'{off_name}={res[off_name+"_val"]:.4f}±{res[off_name+"_err"]:.4f}')
-        if abs(res[off_name+'_val']) > MINOR_CROSSTALK_WARNING:
-            show_warning(f'Coefficient {off_name}={res[off_name+"_val"]:.4f} is not negligible, add it to the FRET pair configuration!')
+        if res['noise'] != 'temporal':
+            show_warning('Noise variances are approximated by the shot noise (single frame), Deming estimates may be biased!')
+        minor, minor_err = res[off_name+'_val'], res[off_name+'_err']
+        if abs(minor) > MINOR_CROSSTALK_WARNING and abs(minor) > 2 * minor_err:
+            show_warning(f'Coefficient {off_name}={minor:.4f}±{minor_err:.4f} is not negligible, add it to the FRET pair configuration!')
 
         x_arr, y_arr = fit_arr
         idx = subsample(x_arr.size)
@@ -98,7 +183,7 @@ def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
 # G-factor
 # --------------------------------------------------------------------------
 def _g_calc_init(widget):
-    """ G-factor estimation widget initialization function for dynamic interface update
+    """ G-factor estimation widget initialization: method options and FRET pair list.
 
     """
     options_map = {'Zal': ['mask', 'segment_mask', 'fragments_num'],
@@ -109,22 +194,19 @@ def _g_calc_init(widget):
         for name in all_dynamic_widgets:
             getattr(widget, name).visible = name in options_map.get(method_name, [])
 
-    def update_config(write):
-        widget.config_path.visible = write
-        widget.fret_pair.visible = write
-
     widget.estimation_method.changed.connect(update_interface)
-    widget.write_to_config.changed.connect(update_config)
     update_interface(widget.estimation_method.value)
-    update_config(widget.write_to_config.value)
+    _config_init(widget)
 
 
 @magic_factory(widget_init=_g_calc_init,
                call_button='Estimate',
                estimation_method={"choices": ["Zal", "Chen"], "label": "Estimation Method"},
-               config_path={'mode': 'w', 'filter': '*.yaml;*.yml'},
-               saving_path={'mode': 'd'},)
+               saving_path={'mode': 'd'},
+               **_PAIR_OPTIONS)
 def g_calc(viewer: Viewer, estimation_method:str='Zal',
+           config_mode:str='Default', config_path:pathlib.Path=None,
+           fret_pair:str=None,
            DD_img_high_FRET:Image=None, DA_img_high_FRET:Image=None, AA_img_high_FRET:Image=None,
            DD_img_low_FRET:Image=None, DA_img_low_FRET:Image=None, AA_img_low_FRET:Image=None,
            # options for Zal
@@ -135,12 +217,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
            mask_high: Labels=None,
            mask_low: Labels=None,
            # common options
-           frames_to_average:int=1,
-           a:float=0.0136, d:float=0.2646,  # a & d for TagBFP+mBaoJin
-           b:float=0.0, c:float=0.0,
-           write_to_config:bool=False,
-           config_path:pathlib.Path=None,
-           fret_pair:str='',
+           frames_to_average:int=0,
            saving_path:pathlib.Path = pathlib.Path.home()):
     _check_3d(DD_img_low_FRET, DA_img_low_FRET, AA_img_low_FRET,
               DD_img_high_FRET, DA_img_high_FRET, AA_img_high_FRET)
@@ -149,8 +226,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         raise ValueError('Mask is required for Zal G-factor estimation!')
     if not zal and (mask_high is None or mask_low is None):
         raise ValueError('Both high and low FRET masks are required for Chen G-factor estimation!')
-    if write_to_config and (config_path is None or not fret_pair):
-        raise ValueError('Config path and FRET pair name are required to write the coefficients!')
+    coefs = _load_coefs(config_mode, config_path, fret_pair, 'Fc')    # a, d, b, c only
     do_segmentation = zal and segment_mask
     output_name = _base_name(AA_img_low_FRET)
     n_frames = None if frames_to_average <= 0 else frames_to_average
@@ -163,31 +239,32 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         masks = (np.asarray(mask_high.data), np.asarray(mask_low.data))
 
     def _save_g_data(output):
-        g_df, fit_arr, roi_mask = output
-        g_df.insert(0, 'id', output_name)
-        g_df.insert(1, 'method', estimation_method)
-        g_df.to_csv(os.path.join(saving_path, f"{output_name}_G.csv"))
+        g_df, fit_arr, roi_df, roi_mask = output
+        for df, suffix in ((g_df, ''), (roi_df, '_rois')):
+            df.insert(0, 'id', output_name)
+            df.insert(1, 'fret_pair', fret_pair)
+            df.insert(2, 'method', estimation_method)
+            df.to_csv(os.path.join(saving_path, f"{output_name}_G{suffix}.csv"))
         res = g_df.iloc[0]
         g_val, g_err = res['g_val'], res['g_err']
         if do_segmentation:
             add_or_update_labels(viewer, roi_mask, f"{output_name}_seg_labels",
                                  opacity=0.5, contour=0)
-        if write_to_config:
-            e_fret.update_yaml(config_path, fret_pair, a=a, d=d, b=b, c=c, G=g_val)
-            show_info(f'{fret_pair}: a, d, b, c, G written to {config_path}')
 
         mpl_fig = new_figure()
         ax0 = mpl_fig.add_subplot(121)
         ax1 = mpl_fig.add_subplot(122)
         if zal:
             x_arr, y_arr = fit_arr
-            show_info(f'G={g_val:.3f}±{g_err:.3f} (ratio), Deming {res["g_deming"]:.3f}, '
-                      f'OLS {res["g_ols"]:.3f} with intercept {res["g_i"]:.2f}±{res["g_i_err"]:.2f}, r² {res["g_r^2"]:.3f}')
+            show_info(f'G={g_val:.3f}±{g_err:.3f} (Deming), intercept {res["g_i"]:.2f}±{res["g_i_err"]:.2f}; '
+                      f'ratio {res["g_ratio"]:.3f}±{res["g_ratio_err"]:.3f}, OLS {res["g_ols"]:.3f}, r² {res["g_r^2"]:.3f}')
+            if res['g_noise'] != 'temporal':
+                show_warning('Single frames: noise variances are approximated by the shot noise, Deming estimate may be biased!')
             x_line = np.linspace(min(0.0, np.min(x_arr)), np.max(x_arr), 100)
             ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
-            ax0.plot(x_line, g_val*x_line, color='red', linewidth=2, label='ratio (through origin)')
-            ax0.plot(x_line, res['g_ols']*x_line + res['g_i'], color='black',
-                     linewidth=1, linestyle='--', label='OLS')
+            ax0.plot(x_line, g_val*x_line + res['g_i'], color='red', linewidth=2, label='Deming')
+            ax0.plot(x_line, res['g_ratio']*x_line, color='black',
+                     linewidth=1, linestyle='--', label='ratio (through origin)')
             ax0.legend()
             style_axis(ax0, 'ΔD, a.u.', 'ΔFc, a.u.', f'G={g_val:.3f}±{g_err:.3f}')
 
@@ -220,7 +297,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
     @thread_worker
     def _g_calc():
         start = time.perf_counter()
-        show_info(f'G-factor estimation started, method {estimation_method}, a={a}, d={d}, b={b}, c={c}')
+        show_info(f'G-factor estimation started, method {estimation_method}')
         roi_mask, l_mask = masks
         if do_segmentation:
             if np.sum(roi_mask != 0) // fragments_num < 300:
@@ -228,7 +305,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
             roi_mask = mask_segmentation(roi_mask != 0, fragment_num=fragments_num)
         show_info(f'G-factor estimation with {label_ids(roi_mask).size} ROIs')
         g_estimator = e_fret.GFactorEstimation(mask=roi_mask, l_mask=l_mask,
-                                               a_val=a, d_val=d, b_val=b, c_val=c,
+                                               a_val=coefs.a, d_val=coefs.d, b_val=coefs.b, c_val=coefs.c,
                                                n_frames=n_frames, **imgs)
         coef = g_estimator.estimate_g_zal() if zal else g_estimator.estimate_g_chen()
         show_info(f'G-factor estimated in {time.perf_counter() - start:.2f}s')
@@ -240,68 +317,6 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
 # --------------------------------------------------------------------------
 # FRET estimation
 # --------------------------------------------------------------------------
-def _read_pairs(path):
-    if path is None or not pathlib.Path(path).is_file():
-        return []
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            return list((yaml.safe_load(f) or {}).keys())
-    except Exception as e:
-        show_warning(f'Error loading {pathlib.Path(path).name}: {e}')
-        return []
-
-
-def _config_path(config_mode, config_path):
-    return DEFAULT_FRET_CONFIG_PATH if config_mode == 'Default' else config_path
-
-
-def _config_init(widget):
-    """ Keeps the list of FRET pairs in sync with the selected configuration file.
-
-    Choices are provided by a callable, so they survive the reset of choices
-    done by napari on every change of the layer list.
-
-    """
-    widget._pairs = []
-    widget.fret_pair.choices = lambda _: list(widget._pairs)
-
-    def _reload(*_):
-        default = widget.config_mode.value == 'Default'
-        widget.config_path.visible = not default
-        selected = widget.fret_pair.value
-        widget._pairs = _read_pairs(_config_path(widget.config_mode.value, widget.config_path.value))
-        widget.fret_pair.reset_choices()
-        if selected in widget._pairs:
-            widget.fret_pair.value = selected
-
-    widget.config_mode.changed.connect(_reload)
-    widget.config_path.changed.connect(_reload)
-    _reload()
-
-
-def _load_coefs(config_mode, config_path, fret_pair, output_type):
-    load_path = _config_path(config_mode, config_path)
-    if not load_path or not pathlib.Path(load_path).is_file():
-        raise FileNotFoundError('Configuration file not found!')
-    if not fret_pair:
-        raise ValueError('FRET pair is not selected!')
-    coefs = e_fret.FRETCoefs.from_yaml(load_path, fret_pair)
-    coefs.require(output_type)
-    show_info(f'Selected FRET pair {fret_pair}: a={coefs.a}, d={coefs.d}, b={coefs.b}, c={coefs.c}, G={coefs.G}, xi={coefs.xi}')
-    return coefs
-
-
-_CONFIG_OPTIONS = dict(config_mode={'label': 'Config Mode', 'widget_type': 'RadioButtons',
-                                    'choices': ['Load', 'Default'],
-                                    'orientation': 'horizontal'},
-                       config_path={'label': 'Config Path', 'widget_type': 'FileEdit',
-                                    'mode': 'r', 'filter': '*.yaml;*.yml'},
-                       fret_pair={'label': 'FRET Pair', 'choices': [],
-                                  'widget_type': 'ComboBox'},
-                       output_type={"choices": ['Fc', 'E_D', 'E_A', 'Ecorr'],
-                                    'label': 'Estimation Method'})
-
-
 @magic_factory(widget_init=_config_init,
                call_button='Estimate FRET',
                **_CONFIG_OPTIONS)
