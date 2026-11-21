@@ -285,7 +285,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                          label=label.replace('high FRET', 'high and low FRET'))
             start, stop = frame_range if frame_range is not None else (0, fc_prof.size)
             ax2.axvspan(start - 0.5, stop - 0.5, color=color, alpha=0.15, linewidth=0,
-                        label=f'{"high" if i == 0 else "low"} FRET frames {start}-{stop - 1}')
+                        label=f'{"high" if i == 0 else "low"} FRET frames')
         ax2.legend(fontsize=8)
         style_axis(ax2, 'Frame', 'Mean Fc, a.u.', 'Mean Fc inside of the mask, shaded: frames used for G')
         if zal:
@@ -297,9 +297,9 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
             x_line = np.linspace(min(0.0, np.min(x_arr)), np.max(x_arr), 100)
             ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
             ax0.plot(x_line, g_val*x_line + res['g_i'], color='red', linewidth=2,
-                     label=f'Deming, G={g_val:.3f}±{g_err:.3f}')
+                     label='Deming')
             ax0.plot(x_line, res['g_ratio']*x_line, color='black', linewidth=1, linestyle='--',
-                     label=f'ratio (through origin), G={res["g_ratio"]:.3f}±{res["g_ratio_err"]:.3f}')
+                     label='ratio (through origin)')
             ax0.legend(fontsize=8)
             style_axis(ax0, 'ΔD, a.u.', 'ΔFc, a.u.',
                        f'Deming G={g_val:.3f}±{g_err:.3f}, ratio G={res["g_ratio"]:.3f}±{res["g_ratio_err"]:.3f}')
@@ -347,11 +347,11 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         coef = g_estimator.estimate_g_zal() if zal else g_estimator.estimate_g_chen()
         show_info(f'G-factor estimated in {time.perf_counter() - start:.2f}s')
         fc_profiles = []
-        for prefix, layer, mask_data, key in (('h', AA_img_high_FRET, masks[0], 'h_frames'),
-                                              ('l', AA_img_low_FRET, masks[1] if masks[1] is not None else masks[0], 'l_frames')):
+        for prefix, mask_data, key in (('h', masks[0], 'h_frames'),
+                                       ('l', masks[1] if masks[1] is not None else masks[0], 'l_frames')):
             fc_prof = e_fret.mask_fc_profile(imgs[f'{prefix}_dd_img'], imgs[f'{prefix}_da_img'],
                                              imgs[f'{prefix}_aa_img'], mask_data, coefs)
-            fc_profiles.append((fc_prof, frames[key], f'{"high" if prefix == "h" else "low"} FRET, {layer.name}'))
+            fc_profiles.append((fc_prof, frames[key], f'{"high" if prefix == "h" else "low"} FRET'))
         return (*coef, roi_mask, fc_profiles)
 
     start_worker('E-FRET G-factor estimation', _g_calc(), on_return=_save_g_data)
