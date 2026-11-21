@@ -20,3 +20,4 @@ site/
 venv
 dev_env.yml
 *.csv
+AGENTS.md
