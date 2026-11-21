@@ -2,7 +2,6 @@
 
 """
 import numpy as np
-from magicgui import magic_factory
 
 from napari import Viewer
 from napari.layers import Image, Labels
@@ -11,7 +10,7 @@ from napari.utils.notifications import show_info
 
 from ..core import masking
 from ..core.profiles import label_ids
-from ._common import start_worker, add_or_update_labels
+from ._common import plugin_widget, start_worker, add_or_update_labels
 
 
 def _check_frame(img, det_frame_index):
@@ -21,7 +20,7 @@ def _check_frame(img, det_frame_index):
         raise ValueError(f'det_frame_index should be less than {img.data.shape[0]}!')
 
 
-@magic_factory(call_button='Build Dots Mask',
+@plugin_widget(call_button='Build Dots Mask',
                background_level={"widget_type": "FloatSlider", 'min':50.0, 'max': 99.0, 'step':1.0},
                detection_level={"widget_type": "FloatSlider",'min':1.0, 'max': 100.0, 'step':1.0},)
 def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detection_level:float=25.0,
@@ -46,7 +45,7 @@ def dot_mask_calc(viewer: Viewer, img:Image, background_level:float=75.0, detect
     start_worker('Dot-patterns masking', _dot_mask_calc(), on_yield=_save_dot_labels)
 
 
-@magic_factory(call_button='Build Up Mask',
+@plugin_widget(call_button='Build Up Mask',
                det_th={"widget_type": "FloatSlider", 'max': 1},
                in_ROIs_det_method={"choices": ['otsu', 'threshold']},)
 def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels=None,
@@ -84,7 +83,7 @@ def up_mask_calc(viewer: Viewer, img:Image, ROIs_mask:Labels=None,
     start_worker('Up masking', _up_mask_calc(), on_yield=_save_up_labels)
 
 
-@magic_factory(call_button='Build Mask',
+@plugin_widget(call_button='Build Mask',
                masking_mode={"choices": ['up', 'down']},)
 def mask_calc(viewer: Viewer, img:Image, det_frame_index:int=2,
               masking_mode:str='up',

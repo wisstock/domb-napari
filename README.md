@@ -80,6 +80,8 @@ Widgets are placed in the napari `Layers` menu:
 | Segment | Dot-patterns masking, Up masking, Intensity masking |
 | Visualize > Labels Profiles | ROIs profiles, Multiple img stat profiles, Multiple labels stat profiles |
 
+Every widget opens as a new tab of the right dock area and scrolls when it is higher than the window. Plots open as tabs as well.
+
 ---
 
 ## Preprocessing
@@ -303,12 +305,13 @@ G_{Zal} = \frac{F_c - F_c^{post}}{D^{post} - D} \qquad G_{Chen} = \frac{F_{c,1}/
 | `mask` | | `Zal`: Labels layer of ROIs or of the whole area |
 | `segment_mask`, `fragments_num` | on, 30 | `Zal`: split the mask into compact fragments of similar area (k-means) |
 | `mask_high`, `mask_low` | | `Chen`: Labels layers of ROIs for both samples |
-| `frames_to_average` | 0 | number of the first frames averaged, 0 - all |
+| `select_frames` | off | off: all frames of every stack are averaged; on: only the selected ranges |
+| `frames_high_FRET`, `frames_low_FRET` | `[0, 5]` | `[start, stop]` frame indices of the high and low FRET stacks, `stop` excluded (Python slice); the same layer with different ranges can be used for both |
 | `saving_path` | home | output directory |
 
 - `Zal`: `g_val`, `g_i` - slope and intercept of Deming regression of ΔF<sub>c</sub> on ΔD over ROIs, ROIs weighted by area; `g_err`, `g_i_err` - jackknife errors.
   - Errors of ΔD and ΔF<sub>c</sub> are correlated ($I_{DD}$ enters both), so the regression is done for $\Delta F_c - s\,\Delta D$ with $s = \mathrm{cov}/\mathrm{var}(\Delta D)$ (`g_shift`), which is uncorrelated with ΔD, and $s$ is added back.
-  - Noise variances of ROI means are measured from successive frames of both stacks (`g_noise` = `temporal`); single frames use the shot noise approximation (warning). `g_delta` - the noise variance ratio.
+  - Noise variances of ROI means are measured from successive selected frames of both stacks (`g_noise` = `temporal`); single frames use the shot noise approximation (warning). `g_delta` - the noise variance ratio.
   - Diagnostics: `g_ratio` (ratio of sums, line through the origin), `g_ols`, `g_ols_i`, `g_r^2`. An intercept far from zero indicates wrong cross-talk coefficients, misregistration or donor bleaching.
   - Deming slope uses the spread of ΔD over ROIs: with a narrow spread its error is several times larger than that of `g_ratio`.
 - `Chen`: every term is a ratio of sums over ROIs; `g_err`, `g_ci_low`, `g_ci_high` are bootstrap error and 95% interval.

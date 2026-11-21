@@ -6,7 +6,6 @@ import pathlib
 import time
 
 import numpy as np
-from magicgui import magic_factory
 
 from napari import Viewer
 from napari.layers import Image, Labels, Points
@@ -14,7 +13,7 @@ from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info, show_warning
 
 from ..core import profiles
-from ._common import start_worker, new_figure, style_axis, show_figure
+from ._common import plugin_widget, start_worker, new_figure, style_axis, show_figure
 
 
 _MODES = {'ΔF': 'dF', 'ΔF/F0': 'dF/F0', 'abs.': 'abs'}
@@ -59,7 +58,7 @@ def _new_axis(values_mode):
     return mpl_fig, ax
 
 
-@magic_factory(call_button='Build Profiles',
+@plugin_widget(call_button='Build Profiles',
                values_mode=_VALUES_OPTION,)
 def labels_profile_line(viewer: Viewer, img:Image, labels:Labels,
                         time_scale:float=1.0,
@@ -125,7 +124,7 @@ def _stat_profiles(viewer, key, title, dock_name, sets, time_scale, values_mode,
     start_worker(key, _calc(), on_return=_plot)
 
 
-@magic_factory(call_button='Build Profiles',
+@plugin_widget(call_button='Build Profiles',
                profiles_num={"choices": ['1', '2', '3']},
                values_mode=_VALUES_OPTION,
                stat_method=_STAT_OPTION,)
@@ -148,7 +147,7 @@ def labels_multi_profile_stat(viewer: Viewer, img_0:Image, img_1:Image=None, img
                    time_scale, values_mode, use_simple_baseline, ΔF_win, Dietrich_std, stat_method)
 
 
-@magic_factory(call_button='Build Profiles',
+@plugin_widget(call_button='Build Profiles',
                labels_num={"choices": ['1', '2', '3']},
                values_mode=_VALUES_OPTION,
                stat_method=_STAT_OPTION,)
@@ -170,7 +169,7 @@ def multi_labels_profile_stat(viewer: Viewer, img:Image,
                    time_scale, values_mode, use_simple_baseline, ΔF_win, Dietrich_std, stat_method)
 
 
-@magic_factory(call_button='Save Data',
+@plugin_widget(call_button='Save Data',
                saving_path={'mode': 'd'})
 def save_df(img:Image, labels:Labels,
             time_scale:float=1.0,

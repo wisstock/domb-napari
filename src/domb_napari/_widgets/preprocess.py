@@ -6,7 +6,6 @@ import pathlib
 import time
 
 import numpy as np
-from magicgui import magic_factory
 
 from napari import Viewer
 from napari.layers import Image, Labels
@@ -17,7 +16,7 @@ from skimage import filters
 
 from ..core import preprocess
 from ..core.registration import AffineRegistration, apply_affine_stack
-from ._common import start_worker, add_or_update_image
+from ._common import plugin_widget, start_worker, add_or_update_image
 
 
 # expected limit of scaling and shear between the sides of a dual-view splitter
@@ -45,7 +44,7 @@ def _split_channels_init(widget):
     _update()
 
 
-@magic_factory(widget_init=_split_channels_init,
+@plugin_widget(widget_init=_split_channels_init,
                call_button='Preprocess stack',
                stack_order={"choices": ['TCXY', 'CTXY']},
                correction_method={"choices": ['exp', 'biexp', '1st']},
@@ -141,7 +140,7 @@ def split_channels(viewer: Viewer, img:Image,
     start_worker('Multichannel stack preprocessing', _split_channels(), on_yield=_save_ch)
 
 
-@magic_factory(call_button='Align stack',
+@plugin_widget(call_button='Align stack',
                align_method={"choices": ['internal', 'load matrix']},
                load_matrix={'mode': 'r', 'filter': 'Text files (*.txt)'},
                saving_path={'mode': 'd'},)

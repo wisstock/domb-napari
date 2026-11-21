@@ -129,7 +129,11 @@ def test_pipeline(tmp_path):
                   DD_img_low_FRET=dd, DA_img_low_FRET=da, AA_img_low_FRET=aa, saving_path=tmp_path,
                   config_mode='Default', fret_pair='TagBFP/mBaoJin')
     assert 'TagBFP/mBaoJin' in w['g_calc'].fret_pair.choices
-    _run(w['g_calc'], estimation_method='Zal', mask=mask, fragments_num=2, **g_args)
+    _run(w['g_calc'], estimation_method='Zal', mask=mask, fragments_num=2,
+         select_frames=True, frames_high_FRET=[0, 4], frames_low_FRET=[4, 8], **g_args)
+    assert pd.read_csv(tmp_path / 'cell_algn_G.csv')['n_frames_h'][0] == 4
+    with pytest.raises(ValueError):
+        w['g_calc'](estimation_method='Zal', mask=mask, select_frames=True, frames_high_FRET=[2, 9], **g_args)
     _run(w['g_calc'], estimation_method='Chen', mask_high=v.layers['cell_algn_seg_labels'], mask_low=mask, **g_args)
     rois = pd.read_csv(tmp_path / 'cell_algn_G_rois.csv')
     assert set(rois['construct']) == {'high', 'low'} and rois['fret_pair'][0] == 'TagBFP/mBaoJin'
@@ -148,4 +152,22 @@ def test_pipeline(tmp_path):
     _run(w['save_df'], img=aa, labels=dots, save_ROIs_distances=True, saving_path=tmp_path)
     df = pd.read_csv(tmp_path / 'cell_ch3_cell_ch3_dots-labels.csv')
     assert len(df) == 2 * dots.data.max() * 8 and 'dist' in df.columns
+    v.close()
+
+
+def test_docked_widgets_are_tabbed():
+    if os.environ.get('QT_QPA_PLATFORM') == 'offscreen' or \
+       (sys.platform.startswith('linux') and not os.environ.get('DISPLAY')):
+        pytest.skip('OpenGL context is not available')
+    from qtpy.QtWidgets import QApplication, QScrollArea
+    v = napari.Viewer(show=False)
+    docks, widgets = [], []
+    for name in ('split_channels', 'g_calc', 'e_app_calc'):
+        widgets.append(_factories()[name]())
+        docks.append(v.window.add_dock_widget(widgets[-1], name=name))
+        for _ in range(3):
+            QApplication.processEvents()
+    assert set(v.window._qt_window.tabifiedDockWidgets(docks[0])) == set(docks[1:])
+    for dock, widget in zip(docks, widgets):
+        assert isinstance(dock.widget(), QScrollArea) and dock.inner_widget() is widget
     v.close()

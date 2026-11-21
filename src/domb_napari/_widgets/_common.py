@@ -2,12 +2,102 @@
 
 """
 import numpy as np
+from magicgui import magic_factory
 
 from napari.utils.notifications import show_warning
 
 
 _RUNNING = set()     # keys of the widgets with a running worker
 _DOCKS = {}          # (viewer id, name) -> dock widget with a figure
+
+
+def plugin_widget(widget_init=None, **kwargs):
+    """ magic_factory of a plugin widget: scrollable, docked as a new tab.
+
+    napari stacks plugin dock widgets of one area under each other, so
+    many open widgets do not fit into the window. After napari docks a
+    widget made by this factory, the widget is put into a scroll area and
+    its dock is moved into a tab next to the other dock widgets of its area.
+
+    """
+    def _init(widget):
+        if widget_init is not None:
+            widget_init(widget)
+        dock_as_tab(widget)
+
+    return magic_factory(widget_init=_init, **kwargs)
+
+
+def dock_as_tab(widget):
+    """ Makes the dock of a widget scrollable and tabifies it with the open
+    docks of the same area.
+
+    Runs on the next event loop iteration, when the widget is already
+    docked; does nothing for a widget that is not docked.
+
+    """
+    try:
+        from qtpy.QtCore import QTimer
+        from qtpy.QtWidgets import QApplication
+    except Exception:
+        return
+    if QApplication.instance() is None:
+        return
+    QTimer.singleShot(0, lambda: _tabify(widget))
+
+
+def _make_scrollable(dock):
+    """ Puts the content of a dock widget into a vertical scroll area.
+
+    napari docks magicgui widgets by their inner QWidget, so the scrollable
+    option of magicgui is lost; the scroll area is added to the dock instead.
+    The magicgui widget is kept as _magic_widget, which napari uses to find
+    the widget of a dock.
+
+    """
+    from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QFrame, QScrollArea
+    inner = dock.widget()
+    if inner is None or isinstance(inner, QScrollArea):
+        return
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    if hasattr(inner, '_magic_widget'):
+        scroll._magic_widget = inner._magic_widget
+    dock.setWidget(scroll)
+    scroll.setWidget(inner)
+    scroll.setMinimumWidth(inner.minimumSizeHint().width() + scroll.verticalScrollBar().sizeHint().width())
+
+
+def _tabify(widget):
+    from qtpy.QtWidgets import QDockWidget, QMainWindow
+    try:
+        dock = widget.native
+        while dock is not None and not isinstance(dock, QDockWidget):
+            dock = dock.parentWidget()
+        window = dock.parentWidget() if dock is not None else None
+        while window is not None and not isinstance(window, QMainWindow):
+            window = window.parentWidget()
+        if window is None:
+            return
+        _make_scrollable(dock)
+        if dock.isFloating():
+            return
+        area = window.dockWidgetArea(dock)
+        # a tabbed dock in the background is not visible, so the open state
+        # is taken from its toggle action (unchecked while the window is hidden)
+        others = [dw for dw in window.findChildren(QDockWidget)
+                  if dw is not dock and not dw.isFloating()
+                  and (dw.toggleViewAction().isChecked() or not dw.isHidden())
+                  and window.dockWidgetArea(dw) == area]
+        if others:
+            window.tabifyDockWidget(others[-1], dock)
+            dock.show()
+            dock.raise_()
+    except RuntimeError:     # the widget was closed before the timer fired
+        pass
 
 
 def start_worker(key:str, worker, on_yield=None, on_return=None):
@@ -101,7 +191,7 @@ def show_figure(viewer, fig, name:str):
             viewer.window.remove_dock_widget(old_dock)
         except Exception:
             pass
-    _DOCKS[key] = viewer.window.add_dock_widget(FigureCanvasQTAgg(fig), name=name)
+    _DOCKS[key] = viewer.window.add_dock_widget(FigureCanvasQTAgg(fig), name=name, tabify=True)
     return _DOCKS[key]
 
 

@@ -533,16 +533,36 @@ def _coef_row(name:str, fit:dict):
             name + '_delta': fit['delta']}
 
 
-def _mean_frames(img:np.ndarray, n_frames:int=None):
-    """ 2D float64 image as the mean of the first n_frames of a stack.
+def _select_frames(img:np.ndarray, frames:tuple=None):
+    """ Frames start:stop of a stack (stop is exclusive), all frames if None.
 
     """
     img = np.asarray(img)
+    if img.ndim != 3:
+        if frames is not None:
+            raise ValueError('Frame range can be selected for 3D stacks only!')
+        return img
+    if frames is None:
+        return img
+    if len(frames) != 2:
+        raise ValueError('Frame range should have 2 elements: start and stop!')
+    start, stop = (int(i) for i in frames)
+    if not 0 <= start < stop <= img.shape[0]:
+        raise ValueError(f'Frame range [{start}, {stop}] is incorrect for a stack of {img.shape[0]} frames, '
+                         f'0 <= start < stop <= {img.shape[0]} is required!')
+    return img[start:stop]
+
+
+def _mean_frames(img:np.ndarray, frames:tuple=None):
+    """ 2D float64 image as the mean of frames start:stop of a stack, see _select_frames.
+
+    """
+    img = _select_frames(img, frames)
     if img.ndim == 2:
         return img.astype(np.float64)
     if img.ndim != 3:
         raise ValueError('Incorrect input image shape, must be 2D image or 3D stack!')
-    return np.mean(img[:n_frames], axis=0, dtype=np.float64)
+    return np.mean(img, axis=0, dtype=np.float64)
 
 
 # --------------------------------------------------------------------------
@@ -702,8 +722,10 @@ class GFactorEstimation():
         cross-talk coefficients
     b_val, c_val: float
         minor cross-talk coefficients, 0 if negligible
-    n_frames: int
-        number of the first frames of 3D inputs to average, all if None
+    h_frames, l_frames: tuple
+        (start, stop) frame ranges of the high and the low FRET stacks to
+        average, stop is exclusive; all frames if None. The noise of the
+        averaged images is measured from the same frames.
 
     Methods
     -------
@@ -717,20 +739,21 @@ class GFactorEstimation():
                  h_dd_img=None, h_da_img=None, h_aa_img=None,
                  l_dd_img=None, l_da_img=None, l_aa_img=None,
                  a_val=None, d_val=None, b_val=0.0, c_val=0.0,
-                 n_frames:int=None):
+                 h_frames:tuple=None, l_frames:tuple=None):
         if any(img is None for img in [h_dd_img, h_da_img, h_aa_img,
                                        l_dd_img, l_da_img, l_aa_img]):
             raise ValueError("All input images must be provided!")
-        raw_h = [np.asarray(img) for img in (h_dd_img, h_da_img, h_aa_img)]
-        raw_l = [np.asarray(img) for img in (l_dd_img, l_da_img, l_aa_img)]
-        self.h_dd_img, self.h_da_img, self.h_aa_img = [_mean_frames(img, n_frames) for img in raw_h]
-        self.l_dd_img, self.l_da_img, self.l_aa_img = [_mean_frames(img, n_frames) for img in raw_l]
-        # noise of the averaged images is measured from the stacks, see estimate_g_zal
+        raw_h = [_select_frames(img, h_frames) for img in (h_dd_img, h_da_img, h_aa_img)]
+        raw_l = [_select_frames(img, l_frames) for img in (l_dd_img, l_da_img, l_aa_img)]
+        self.h_dd_img, self.h_da_img, self.h_aa_img = [_mean_frames(img) for img in raw_h]
+        self.l_dd_img, self.l_da_img, self.l_aa_img = [_mean_frames(img) for img in raw_l]
+        self.n_frames = {state: (raw[0].shape[0] if raw[0].ndim == 3 else 1)
+                         for state, raw in (('h', raw_h), ('l', raw_l))}
+        # noise of the averaged images is measured from the selected frames, see estimate_g_zal
         self._raw = {}
         for state, raw in (('h', raw_h), ('l', raw_l)):
             if all(img.ndim == 3 and img.shape[0] >= 2 for img in raw):
-                n_avg = min(raw[0].shape[0], n_frames or raw[0].shape[0])
-                self._raw[state] = (raw, n_avg)
+                self._raw[state] = (raw, raw[0].shape[0])
         self.coefs = FRETCoefs(a=a_val, d=d_val, b=b_val, c=c_val)
         as_labels = lambda m: np.asarray(m).astype(np.uint8) if np.asarray(m).dtype == bool else np.asarray(m)
         self.mask = as_labels(mask)
@@ -746,8 +769,8 @@ class GFactorEstimation():
     def _roi_noise(self, state:str, labels, sig):
         """ Noise variances of the ROI means of DD, DA and AA [3,roi].
 
-        Measured from successive frames of the ROI mean profiles if the
-        stacks have 2+ frames, divided by the number of averaged frames.
+        Measured from successive selected frames of the ROI mean profiles if
+        there are 2+ of them, divided by the number of averaged frames.
         Otherwise the shot noise approximation |mean| / area, which ignores
         the background and read noise.
 
@@ -809,7 +832,7 @@ class GFactorEstimation():
         g_df: pd.DataFrame
             one row: g_val, g_err, g_i, g_i_err, g_ratio, g_ratio_err,
             g_ols, g_ols_err, g_ols_i, g_ols_i_err, g_r^2, g_p, g_delta,
-            g_shift, g_noise, n_roi
+            g_shift, g_noise, n_roi, n_frames_h, n_frames_l
         fit_arr: np.ndarray [2,roi]
             (dD, dFc) of ROIs
         roi_df: pd.DataFrame
@@ -833,7 +856,8 @@ class GFactorEstimation():
                     'deming_i': fit_dem['deming_i'], 'deming_i_err': fit_dem['deming_i_err'],
                     'delta': delta})
         row = _coef_row('g', fit)
-        row.update({'g_shift': shift, 'g_noise': source, 'n_roi': int(don_delta.size)})
+        row.update({'g_shift': shift, 'g_noise': source, 'n_roi': int(don_delta.size),
+                    'n_frames_h': self.n_frames['h'], 'n_frames_l': self.n_frames['l']})
 
         roi_df = pd.DataFrame({'roi': label_ids(self.mask), 'area': area,
                                **{f'{key}_high': sig_h[key] for key in ('DD', 'DA', 'AA', 'D', 'A', 'Fc')},
@@ -853,7 +877,8 @@ class GFactorEstimation():
         -------
         g_df: pd.DataFrame
             one row: g_val, g_err, g_ci_low, g_ci_high, d_a_h, fc_a_h, d_a_l,
-            fc_a_l (ratios of sums, D/A and Fc/A of both constructs), n_roi_h, n_roi_l
+            fc_a_l (ratios of sums, D/A and Fc/A of both constructs), n_roi_h, n_roi_l,
+            n_frames_h, n_frames_l
         fit_arr: tuple of np.ndarray [2,roi]
             (D/A, Fc/A) of ROIs of the high and of the low FRET constructs
         roi_df: pd.DataFrame
@@ -889,7 +914,8 @@ class GFactorEstimation():
                               'g_ci_low': g_low, 'g_ci_high': g_high,
                               'd_a_h': tot_h[1] / tot_h[2], 'fc_a_h': tot_h[0] / tot_h[2],
                               'd_a_l': tot_l[1] / tot_l[2], 'fc_a_l': tot_l[0] / tot_l[2],
-                              'n_roi_h': n_h, 'n_roi_l': n_l}])
+                              'n_roi_h': n_h, 'n_roi_l': n_l,
+                              'n_frames_h': self.n_frames['h'], 'n_frames_l': self.n_frames['l']}])
         tables = []
         with np.errstate(invalid='ignore', divide='ignore'):
             fit_arr = (np.array([sig_h['D'] / sig_h['A'], sig_h['Fc'] / sig_h['A']]),
@@ -918,8 +944,9 @@ class KFactorEstimation():
         cross-talk coefficients and G factor
     b_val, c_val: float
         minor cross-talk coefficients, 0 if negligible
-    n_frames: int
-        number of the first frames of 3D inputs to average, all if None
+    frames: tuple
+        (start, stop) frame range of 3D inputs to average, stop is
+        exclusive; all frames if None
 
     Methods
     -------
@@ -931,10 +958,10 @@ class KFactorEstimation():
     def __init__(self, mask,
                  dd_img=None, da_img=None, aa_img=None,
                  a_val=None, d_val=None, G_val=None, b_val=0.0, c_val=0.0,
-                 n_frames:int=None):
+                 frames:tuple=None):
         if any(img is None for img in [dd_img, da_img, aa_img]):
             raise ValueError("All spectral channels must be provided!")
-        self.dd_img, self.da_img, self.aa_img = [_mean_frames(img, n_frames) for img
+        self.dd_img, self.da_img, self.aa_img = [_mean_frames(img, frames) for img
                                                  in (dd_img, da_img, aa_img)]
         self.mask = mask
         self.coefs = FRETCoefs(a=a_val, d=d_val, G=G_val, b=b_val, c=c_val)

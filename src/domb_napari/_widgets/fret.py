@@ -7,7 +7,6 @@ import time
 
 import numpy as np
 import pandas as pd
-from magicgui import magic_factory
 
 from napari import Viewer
 from napari.layers import Image, Labels
@@ -17,7 +16,7 @@ from napari.utils.notifications import show_info, show_warning
 from ..core import fret as e_fret
 from ..core.masking import mask_segmentation
 from ..core.profiles import label_ids
-from ._common import (start_worker, add_or_update_image, add_or_update_labels,
+from ._common import (plugin_widget, start_worker, add_or_update_image, add_or_update_labels,
                       new_figure, style_axis, show_figure, subsample, robust_limit)
 
 
@@ -120,7 +119,7 @@ _CONFIG_OPTIONS = dict(_PAIR_OPTIONS,
 # --------------------------------------------------------------------------
 # cross-talk
 # --------------------------------------------------------------------------
-@magic_factory(call_button='Estimate cross-talk',
+@plugin_widget(call_button='Estimate cross-talk',
                presented_fluorophore={"choices": ['A', 'D']},
                saving_path={'mode': 'd'})
 def cross_calc(viewer: Viewer, DD_img:Image, DA_img:Image, AA_img:Image,
@@ -194,12 +193,18 @@ def _g_calc_init(widget):
         for name in all_dynamic_widgets:
             getattr(widget, name).visible = name in options_map.get(method_name, [])
 
+    def update_frames(selected):
+        widget.frames_high_FRET.visible = selected
+        widget.frames_low_FRET.visible = selected
+
     widget.estimation_method.changed.connect(update_interface)
+    widget.select_frames.changed.connect(update_frames)
     update_interface(widget.estimation_method.value)
+    update_frames(widget.select_frames.value)
     _config_init(widget)
 
 
-@magic_factory(widget_init=_g_calc_init,
+@plugin_widget(widget_init=_g_calc_init,
                call_button='Estimate',
                estimation_method={"choices": ["Zal", "Chen"], "label": "Estimation Method"},
                saving_path={'mode': 'd'},
@@ -217,7 +222,9 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
            mask_high: Labels=None,
            mask_low: Labels=None,
            # common options
-           frames_to_average:int=0,
+           select_frames:bool=False,
+           frames_high_FRET:list=[0, 5],
+           frames_low_FRET:list=[0, 5],
            saving_path:pathlib.Path = pathlib.Path.home()):
     _check_3d(DD_img_low_FRET, DA_img_low_FRET, AA_img_low_FRET,
               DD_img_high_FRET, DA_img_high_FRET, AA_img_high_FRET)
@@ -229,7 +236,17 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
     coefs = _load_coefs(config_mode, config_path, fret_pair, 'Fc')    # a, d, b, c only
     do_segmentation = zal and segment_mask
     output_name = _base_name(AA_img_low_FRET)
-    n_frames = None if frames_to_average <= 0 else frames_to_average
+    frames = {'h_frames': None, 'l_frames': None}
+    if select_frames:
+        for key, value, layer in (('h_frames', frames_high_FRET, AA_img_high_FRET),
+                                  ('l_frames', frames_low_FRET, AA_img_low_FRET)):
+            if len(value) != 2:
+                raise ValueError('Frame range should have 2 elements: start and stop!')
+            start, stop = int(value[0]), int(value[1])
+            if not 0 <= start < stop <= layer.data.shape[0]:
+                raise ValueError(f'Frame range [{start}, {stop}] is incorrect for {layer.name} with '
+                                 f'{layer.data.shape[0]} frames, 0 <= start < stop <= {layer.data.shape[0]} is required!')
+            frames[key] = (start, stop)
     imgs = dict(h_dd_img=DD_img_high_FRET.data, h_da_img=DA_img_high_FRET.data,
                 h_aa_img=AA_img_high_FRET.data, l_dd_img=DD_img_low_FRET.data,
                 l_da_img=DA_img_low_FRET.data, l_aa_img=AA_img_low_FRET.data)
@@ -262,11 +279,13 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                 show_warning('Single frames: noise variances are approximated by the shot noise, Deming estimate may be biased!')
             x_line = np.linspace(min(0.0, np.min(x_arr)), np.max(x_arr), 100)
             ax0.scatter(x_arr, y_arr, s=15, alpha=0.25, color='blue')
-            ax0.plot(x_line, g_val*x_line + res['g_i'], color='red', linewidth=2, label='Deming')
-            ax0.plot(x_line, res['g_ratio']*x_line, color='black',
-                     linewidth=1, linestyle='--', label='ratio (through origin)')
-            ax0.legend()
-            style_axis(ax0, 'ΔD, a.u.', 'ΔFc, a.u.', f'G={g_val:.3f}±{g_err:.3f}')
+            ax0.plot(x_line, g_val*x_line + res['g_i'], color='red', linewidth=2,
+                     label=f'Deming, G={g_val:.3f}±{g_err:.3f}')
+            ax0.plot(x_line, res['g_ratio']*x_line, color='black', linewidth=1, linestyle='--',
+                     label=f'ratio (through origin), G={res["g_ratio"]:.3f}±{res["g_ratio_err"]:.3f}')
+            ax0.legend(fontsize=8)
+            style_axis(ax0, 'ΔD, a.u.', 'ΔFc, a.u.',
+                       f'Deming G={g_val:.3f}±{g_err:.3f}, ratio G={res["g_ratio"]:.3f}±{res["g_ratio_err"]:.3f}')
 
             with np.errstate(invalid='ignore', divide='ignore'):
                 roi_ratio = y_arr / x_arr
@@ -297,7 +316,8 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
     @thread_worker
     def _g_calc():
         start = time.perf_counter()
-        show_info(f'G-factor estimation started, method {estimation_method}')
+        show_info(f'G-factor estimation started, method {estimation_method}, '
+                  f'frames high FRET {frames["h_frames"] or "all"}, low FRET {frames["l_frames"] or "all"}')
         roi_mask, l_mask = masks
         if do_segmentation:
             if np.sum(roi_mask != 0) // fragments_num < 300:
@@ -306,7 +326,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         show_info(f'G-factor estimation with {label_ids(roi_mask).size} ROIs')
         g_estimator = e_fret.GFactorEstimation(mask=roi_mask, l_mask=l_mask,
                                                a_val=coefs.a, d_val=coefs.d, b_val=coefs.b, c_val=coefs.c,
-                                               n_frames=n_frames, **imgs)
+                                               **frames, **imgs)
         coef = g_estimator.estimate_g_zal() if zal else g_estimator.estimate_g_chen()
         show_info(f'G-factor estimated in {time.perf_counter() - start:.2f}s')
         return (*coef, roi_mask)
@@ -317,7 +337,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
 # --------------------------------------------------------------------------
 # FRET estimation
 # --------------------------------------------------------------------------
-@magic_factory(widget_init=_config_init,
+@plugin_widget(widget_init=_config_init,
                call_button='Estimate FRET',
                **_CONFIG_OPTIONS)
 def e_app_calc(viewer: Viewer,
@@ -367,7 +387,7 @@ def e_app_calc(viewer: Viewer,
     start_worker('E-FRET estimation', _e_app_calc(), on_yield=_save_e_app)
 
 
-@magic_factory(widget_init=_config_init,
+@plugin_widget(widget_init=_config_init,
                call_button='Estimate ROIs FRET',
                saving_path={'mode': 'd'},
                **_CONFIG_OPTIONS)

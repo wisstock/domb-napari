@@ -4,7 +4,6 @@
 import time
 
 import numpy as np
-from magicgui import magic_factory
 
 from napari import Viewer
 from napari.layers import Image
@@ -13,7 +12,7 @@ from napari.utils.notifications import show_info
 
 from ..core import series
 from .. import _cmaps
-from ._common import start_worker, robust_limit
+from ._common import plugin_widget, start_worker, robust_limit
 
 
 def _add_or_update_diverging(viewer, img, img_name, cmap):
@@ -25,7 +24,7 @@ def _add_or_update_diverging(viewer, img, img_name, cmap):
         new_image.colormap = cmap
 
 
-@magic_factory(call_button='Calc Red-Green')
+@plugin_widget(call_button='Calc Red-Green')
 def der_series(viewer: Viewer, img:Image,
                left_frames:int=1, space_frames:int=0, right_frames:int=1,
                normalize_by_int:bool=False,
@@ -55,7 +54,7 @@ def der_series(viewer: Viewer, img:Image,
     start_worker('Red-green series', _der_series(), on_yield=_save_rg_img)
 
 
-@magic_factory(call_button='Calc relative intensity',
+@plugin_widget(call_button='Calc relative intensity',
                values_mode={"choices": ['ΔF', 'ΔF/F0']},
                F0_min={'min': 0.0, 'max': 1e9},)
 def rel_series(viewer: Viewer, img:Image, values_mode:str='ΔF', F0_win:int=5,
