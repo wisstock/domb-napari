@@ -135,6 +135,11 @@ def test_pipeline(tmp_path):
     with pytest.raises(ValueError):
         w['g_calc'](estimation_method='Zal', mask=mask, select_frames=True, frames_high_FRET=[2, 9], **g_args)
     _run(w['g_calc'], estimation_method='Chen', mask_high=v.layers['cell_algn_seg_labels'], mask_low=mask, **g_args)
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+    from domb_napari._widgets import _common
+    plot = _common._DOCKS[(id(v), 'G-factor estimation')].widget()
+    assert plot.findChild(NavigationToolbar2QT) is not None       # export of the figure
+    assert len(plot.findChild(FigureCanvasQTAgg).figure.axes) == 3
     rois = pd.read_csv(tmp_path / 'cell_algn_G_rois.csv')
     assert set(rois['construct']) == {'high', 'low'} and rois['fret_pair'][0] == 'TagBFP/mBaoJin'
 

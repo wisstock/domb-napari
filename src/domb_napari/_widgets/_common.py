@@ -178,11 +178,30 @@ def style_axis(ax, xlabel:str='', ylabel:str='', title:str=None):
         ax.set_title(title, fontsize=10)
 
 
-def show_figure(viewer, fig, name:str):
-    """ Shows a figure in a dock widget, the previous one with this name is replaced.
+def figure_widget(fig):
+    """ Canvas of a figure with the matplotlib toolbar.
+
+    The toolbar exports the figure (PNG, SVG, PDF, TIFF and other formats
+    of matplotlib) and provides zoom and pan.
 
     """
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+    from qtpy.QtWidgets import QVBoxLayout, QWidget
+
+    canvas = FigureCanvasQTAgg(fig)
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(NavigationToolbar2QT(canvas, container))
+    layout.addWidget(canvas)
+    return container
+
+
+def show_figure(viewer, fig, name:str):
+    """ Shows a figure with an export toolbar in a dock widget, the previous
+    one with this name is replaced.
+
+    """
 
     key = (id(viewer), name)
     old_dock = _DOCKS.pop(key, None)
@@ -191,7 +210,7 @@ def show_figure(viewer, fig, name:str):
             viewer.window.remove_dock_widget(old_dock)
         except Exception:
             pass
-    _DOCKS[key] = viewer.window.add_dock_widget(FigureCanvasQTAgg(fig), name=name, tabify=True)
+    _DOCKS[key] = viewer.window.add_dock_widget(figure_widget(fig), name=name, tabify=True)
     return _DOCKS[key]
 
 

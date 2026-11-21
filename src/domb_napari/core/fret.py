@@ -263,6 +263,31 @@ def _masked_profile(img:np.ndarray, mask:np.ndarray=None):
     return np.nanmean(img[:, mask], axis=1, dtype=np.float64)
 
 
+def mask_fc_profile(dd_img, da_img, aa_img, mask, coefs:FRETCoefs):
+    """ Sensitized emission of the mean intensities inside of a mask in every frame.
+
+    Fc is linear in the intensities, so this equals the mean pixel-wise Fc.
+
+    Parameters
+    ----------
+    dd_img, da_img, aa_img: ndarray [t,x,y] or [x,y]
+        DD, DA and AA images
+    mask: ndarray [x,y]
+        all non-zero pixels form one region
+    coefs: FRETCoefs
+        a, d, b, c are used
+
+    Returns
+    -------
+    fc_prof: ndarray [t]
+
+    """
+    imgs = [np.asarray(img) if np.ndim(img) == 3 else np.asarray(img)[np.newaxis, ...]
+            for img in (dd_img, da_img, aa_img)]
+    profiles = [_masked_profile(img, mask) for img in imgs]
+    return fret_from_intensities(*profiles, coefs)['Fc']
+
+
 class CubesFRET():
     """ Class for estimating FRET efficiency in image time series
 

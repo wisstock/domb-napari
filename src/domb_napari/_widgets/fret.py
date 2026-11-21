@@ -256,7 +256,7 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         masks = (np.asarray(mask_high.data), np.asarray(mask_low.data))
 
     def _save_g_data(output):
-        g_df, fit_arr, roi_df, roi_mask = output
+        g_df, fit_arr, roi_df, roi_mask, fc_profiles = output
         for df, suffix in ((g_df, ''), (roi_df, '_rois')):
             df.insert(0, 'id', output_name)
             df.insert(1, 'fret_pair', fret_pair)
@@ -268,9 +268,26 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
             add_or_update_labels(viewer, roi_mask, f"{output_name}_seg_labels",
                                  opacity=0.5, contour=0)
 
-        mpl_fig = new_figure()
-        ax0 = mpl_fig.add_subplot(121)
-        ax1 = mpl_fig.add_subplot(122)
+        mpl_fig = new_figure(figsize=(10, 8), layout='constrained')
+        grid = mpl_fig.add_gridspec(2, 2, height_ratios=[1.4, 1])
+        ax0 = mpl_fig.add_subplot(grid[0, 0])
+        ax1 = mpl_fig.add_subplot(grid[0, 1])
+        ax2 = mpl_fig.add_subplot(grid[1, :])
+        # mean Fc inside of the masks in every frame, frames used for G are shaded;
+        # one line if both images are the same series (e.g. acceptor photobleaching)
+        same_series = np.array_equal(fc_profiles[0][0], fc_profiles[1][0], equal_nan=True)
+        for i, ((fc_prof, frame_range, label), color) in enumerate(zip(fc_profiles, ('red', 'blue'))):
+            frame_idx = np.arange(fc_prof.size)
+            if not same_series:
+                ax2.plot(frame_idx, fc_prof, '-o', markersize=3, color=color, label=label)
+            elif i == 0:
+                ax2.plot(frame_idx, fc_prof, '-o', markersize=3, color='black',
+                         label=label.replace('high FRET', 'high and low FRET'))
+            start, stop = frame_range if frame_range is not None else (0, fc_prof.size)
+            ax2.axvspan(start - 0.5, stop - 0.5, color=color, alpha=0.15, linewidth=0,
+                        label=f'{"high" if i == 0 else "low"} FRET frames {start}-{stop - 1}')
+        ax2.legend(fontsize=8)
+        style_axis(ax2, 'Frame', 'Mean Fc, a.u.', 'Mean Fc inside of the mask, shaded: frames used for G')
         if zal:
             x_arr, y_arr = fit_arr
             show_info(f'G={g_val:.3f}±{g_err:.3f} (Deming), intercept {res["g_i"]:.2f}±{res["g_i_err"]:.2f}; '
@@ -329,7 +346,13 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                                                **frames, **imgs)
         coef = g_estimator.estimate_g_zal() if zal else g_estimator.estimate_g_chen()
         show_info(f'G-factor estimated in {time.perf_counter() - start:.2f}s')
-        return (*coef, roi_mask)
+        fc_profiles = []
+        for prefix, layer, mask_data, key in (('h', AA_img_high_FRET, masks[0], 'h_frames'),
+                                              ('l', AA_img_low_FRET, masks[1] if masks[1] is not None else masks[0], 'l_frames')):
+            fc_prof = e_fret.mask_fc_profile(imgs[f'{prefix}_dd_img'], imgs[f'{prefix}_da_img'],
+                                             imgs[f'{prefix}_aa_img'], mask_data, coefs)
+            fc_profiles.append((fc_prof, frames[key], f'{"high" if prefix == "h" else "low"} FRET, {layer.name}'))
+        return (*coef, roi_mask, fc_profiles)
 
     start_worker('E-FRET G-factor estimation', _g_calc(), on_return=_save_g_data)
 

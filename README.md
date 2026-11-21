@@ -80,7 +80,7 @@ Widgets are placed in the napari `Layers` menu:
 | Segment | Dot-patterns masking, Up masking, Intensity masking |
 | Visualize > Labels Profiles | ROIs profiles, Multiple img stat profiles, Multiple labels stat profiles |
 
-Every widget opens as a new tab of the right dock area and scrolls when it is higher than the window. Plots open as tabs as well.
+Every widget opens as a new tab of the right dock area and scrolls when it is higher than the window. Plots open as tabs as well; the toolbar above a plot exports it (PNG, SVG, PDF and other formats) and provides zoom and pan.
 
 ---
 
@@ -316,6 +316,8 @@ G_{Zal} = \frac{F_c - F_c^{post}}{D^{post} - D} \qquad G_{Chen} = \frac{F_{c,1}/
   - Deming slope uses the spread of ΔD over ROIs: with a narrow spread its error is several times larger than that of `g_ratio`.
 - `Chen`: every term is a ratio of sums over ROIs; `g_err`, `g_ci_low`, `g_ci_high` are bootstrap error and 95% interval.
 - ROIs of one cell are not independent: errors describe the within-sample variability only.
+
+Plot: fit (left), ROI values (right) and mean F<sub>c</sub> inside of the mask in every frame of both stacks with the frames used for G shaded (bottom).
 
 Output: `{name}_G.csv` (estimates), `{name}_G_rois.csv` (fit data: ROI label, area, ROI-mean `DD`, `DA`, `AA`, `D`, `A`, `Fc` of both images or constructs; `dD`, `dFc` for `Zal`; `D/A`, `Fc/A` for `Chen`), plot, `_seg_labels` (if `segment_mask`). Both tables start with `id`, `fret_pair`, `method`.
 
