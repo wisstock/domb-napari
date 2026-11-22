@@ -20,6 +20,7 @@ from ._common import (plugin_widget, start_worker, add_or_update_image, add_or_u
                       new_figure, style_axis, show_figure, subsample, robust_limit)
 
 
+MIN_FRAGMENT_AREA = 20       # px, minimal mean area of mask fragments for G estimation
 DEFAULT_FRET_CONFIG_PATH = pathlib.Path(__file__).parent.parent / '_e_fret_coefs.yaml'
 MINOR_CROSSTALK_WARNING = 0.01
 
@@ -247,6 +248,11 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                 raise ValueError(f'Frame range [{start}, {stop}] is incorrect for {layer.name} with '
                                  f'{layer.data.shape[0]} frames, 0 <= start < stop <= {layer.data.shape[0]} is required!')
             frames[key] = (start, stop)
+    # frame ranges in table names and plots, stop is exclusive
+    used = {key: frames[key] or (0, layer.data.shape[0])
+            for key, layer in (('h_frames', AA_img_high_FRET), ('l_frames', AA_img_low_FRET))}
+    range_tag = '_high{}-{}_low{}-{}'.format(used['h_frames'][0], used['h_frames'][1] - 1,
+                                             used['l_frames'][0], used['l_frames'][1] - 1)
     imgs = dict(h_dd_img=DD_img_high_FRET.data, h_da_img=DA_img_high_FRET.data,
                 h_aa_img=AA_img_high_FRET.data, l_dd_img=DD_img_low_FRET.data,
                 l_da_img=DA_img_low_FRET.data, l_aa_img=AA_img_low_FRET.data)
@@ -256,38 +262,46 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
         masks = (np.asarray(mask_high.data), np.asarray(mask_low.data))
 
     def _save_g_data(output):
-        g_df, fit_arr, roi_df, roi_mask, fc_profiles = output
+        g_df, fit_arr, roi_df, roi_mask, profiles = output
+        g_df['frames_high'] = '{}-{}'.format(used['h_frames'][0], used['h_frames'][1] - 1)
+        g_df['frames_low'] = '{}-{}'.format(used['l_frames'][0], used['l_frames'][1] - 1)
         for df, suffix in ((g_df, ''), (roi_df, '_rois')):
             df.insert(0, 'id', output_name)
             df.insert(1, 'fret_pair', fret_pair)
             df.insert(2, 'method', estimation_method)
-            df.to_csv(os.path.join(saving_path, f"{output_name}_G{suffix}.csv"))
+            df.to_csv(os.path.join(saving_path, f"{output_name}_G{range_tag}{suffix}.csv"))
+        show_info(f'G tables saved to {saving_path}: {output_name}_G{range_tag}.csv, {output_name}_G{range_tag}_rois.csv')
         res = g_df.iloc[0]
         g_val, g_err = res['g_val'], res['g_err']
         if do_segmentation:
             add_or_update_labels(viewer, roi_mask, f"{output_name}_seg_labels",
                                  opacity=0.5, contour=0)
 
-        mpl_fig = new_figure(figsize=(10, 8), layout='constrained')
-        grid = mpl_fig.add_gridspec(2, 2, height_ratios=[1.4, 1])
+        mpl_fig = new_figure(figsize=(10, 10), layout='constrained')
+        grid = mpl_fig.add_gridspec(3, 2, height_ratios=[1.4, 1, 1])
         ax0 = mpl_fig.add_subplot(grid[0, 0])
         ax1 = mpl_fig.add_subplot(grid[0, 1])
-        ax2 = mpl_fig.add_subplot(grid[1, :])
-        # mean Fc inside of the masks in every frame, frames used for G are shaded;
+        ax_fc = mpl_fig.add_subplot(grid[1, :])
+        ax_d = mpl_fig.add_subplot(grid[2, :], sharex=ax_fc)
+        # mean ± SD over ROIs in every frame, frames used for G are shaded;
         # one line if both images are the same series (e.g. acceptor photobleaching)
-        same_series = np.array_equal(fc_profiles[0][0], fc_profiles[1][0], equal_nan=True)
-        for i, ((fc_prof, frame_range, label), color) in enumerate(zip(fc_profiles, ('red', 'blue'))):
-            frame_idx = np.arange(fc_prof.size)
-            if not same_series:
-                ax2.plot(frame_idx, fc_prof, '-o', markersize=3, color=color, label=label)
-            elif i == 0:
-                ax2.plot(frame_idx, fc_prof, '-o', markersize=3, color='black',
-                         label=label.replace('high FRET', 'high and low FRET'))
-            start, stop = frame_range if frame_range is not None else (0, fc_prof.size)
-            ax2.axvspan(start - 0.5, stop - 0.5, color=color, alpha=0.15, linewidth=0,
-                        label=f'{"high" if i == 0 else "low"} FRET frames')
-        ax2.legend(fontsize=8)
-        style_axis(ax2, 'Frame', 'Mean Fc, a.u.', 'Mean Fc inside of the mask, shaded: frames used for G')
+        same_series = all(np.array_equal(profiles[0][0][key][0], profiles[1][0][key][0], equal_nan=True)
+                          for key in ('Fc', 'D'))
+        for i, ((stats, frame_range), color, state) in enumerate(zip(profiles, ('red', 'blue'), ('high', 'low'))):
+            for ax, key in ((ax_fc, 'Fc'), (ax_d, 'D')):
+                center, spread = stats[key]
+                frame_idx = np.arange(center.size)
+                if not same_series or i == 0:
+                    line_color = 'black' if same_series else color
+                    label = 'high and low FRET' if same_series else f'{state} FRET'
+                    ax.plot(frame_idx, center, '-o', markersize=3, color=line_color, label=label)
+                    ax.fill_between(frame_idx, center - spread, center + spread,
+                                    color=line_color, alpha=0.2, linewidth=0)
+                ax.axvspan(frame_range[0] - 0.5, frame_range[1] - 0.5, color=color, alpha=0.12,
+                           linewidth=0, label=f'{state} FRET frames')
+        ax_fc.legend(fontsize=8)
+        style_axis(ax_fc, '', 'Fc, a.u.', 'ROIs mean ± SD, shaded: frames used for G')
+        style_axis(ax_d, 'Frame', 'D, a.u.')
         if zal:
             x_arr, y_arr = fit_arr
             show_info(f'G={g_val:.3f}±{g_err:.3f} (Deming), intercept {res["g_i"]:.2f}±{res["g_i_err"]:.2f}; '
@@ -337,8 +351,10 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                   f'frames high FRET {frames["h_frames"] or "all"}, low FRET {frames["l_frames"] or "all"}')
         roi_mask, l_mask = masks
         if do_segmentation:
-            if np.sum(roi_mask != 0) // fragments_num < 300:
-                raise ValueError('The mask area is too small for segmentation, please select larger area!')
+            mean_area = np.sum(roi_mask != 0) / fragments_num
+            if mean_area < MIN_FRAGMENT_AREA:
+                raise ValueError(f'Mean fragment area {mean_area:.1f} px is less than {MIN_FRAGMENT_AREA} px, '
+                                 f'decrease the number of fragments or select a larger mask!')
             roi_mask = mask_segmentation(roi_mask != 0, fragment_num=fragments_num)
         show_info(f'G-factor estimation with {label_ids(roi_mask).size} ROIs')
         g_estimator = e_fret.GFactorEstimation(mask=roi_mask, l_mask=l_mask,
@@ -346,13 +362,15 @@ def g_calc(viewer: Viewer, estimation_method:str='Zal',
                                                **frames, **imgs)
         coef = g_estimator.estimate_g_zal() if zal else g_estimator.estimate_g_chen()
         show_info(f'G-factor estimated in {time.perf_counter() - start:.2f}s')
-        fc_profiles = []
-        for prefix, mask_data, key in (('h', masks[0], 'h_frames'),
-                                       ('l', masks[1] if masks[1] is not None else masks[0], 'l_frames')):
-            fc_prof = e_fret.mask_fc_profile(imgs[f'{prefix}_dd_img'], imgs[f'{prefix}_da_img'],
-                                             imgs[f'{prefix}_aa_img'], mask_data, coefs)
-            fc_profiles.append((fc_prof, frames[key], f'{"high" if prefix == "h" else "low"} FRET'))
-        return (*coef, roi_mask, fc_profiles)
+        profiles = []
+        for prefix, labels, key in (('h', roi_mask, 'h_frames'),
+                                    ('l', roi_mask if l_mask is None else l_mask, 'l_frames')):
+            sig = e_fret.roi_signal_profiles(imgs[f'{prefix}_dd_img'], imgs[f'{prefix}_da_img'],
+                                             imgs[f'{prefix}_aa_img'], labels, coefs)
+            with np.errstate(invalid='ignore'):
+                stats = {k: (np.nanmean(sig[k], axis=0), np.nanstd(sig[k], axis=0, ddof=1)) for k in ('Fc', 'D')}
+            profiles.append((stats, used[key]))
+        return (*coef, roi_mask, profiles)
 
     start_worker('E-FRET G-factor estimation', _g_calc(), on_return=_save_g_data)
 

@@ -66,8 +66,8 @@ def test_fret_estimation():
     mask = np.ones((16, 16), int)
     mask[:4, :4] = 0
     ecorr = CubesFRET(*stack, A, D, G_val=G).Ecorr_img(mask=mask, f0_frames=1)
-    np.testing.assert_allclose(fret.mask_fc_profile(*stack, mask, FRETCoefs(a=A, d=D)),
-                               [frame[mask > 0].mean() for frame in CubesFRET(*stack, A, D).Fc_img()], rtol=1e-5)
+    roi = fret.roi_signal_profiles(*stack, mask, FRETCoefs(a=A, d=D))
+    np.testing.assert_allclose(roi['Fc'][0], [f[mask > 0].mean() for f in CubesFRET(*stack, A, D).Fc_img()], rtol=1e-5)
     np.testing.assert_allclose(ecorr[:, 8, 8], 0.4, rtol=1e-5)
 
     # coefficients: validation, YAML round trip, bundled configuration

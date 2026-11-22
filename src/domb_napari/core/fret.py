@@ -263,29 +263,29 @@ def _masked_profile(img:np.ndarray, mask:np.ndarray=None):
     return np.nanmean(img[:, mask], axis=1, dtype=np.float64)
 
 
-def mask_fc_profile(dd_img, da_img, aa_img, mask, coefs:FRETCoefs):
-    """ Sensitized emission of the mean intensities inside of a mask in every frame.
-
-    Fc is linear in the intensities, so this equals the mean pixel-wise Fc.
+def roi_signal_profiles(dd_img, da_img, aa_img, labels, coefs:FRETCoefs):
+    """ Unmixed signals of the mean intensities of every ROI in every frame.
 
     Parameters
     ----------
     dd_img, da_img, aa_img: ndarray [t,x,y] or [x,y]
         DD, DA and AA images
-    mask: ndarray [x,y]
-        all non-zero pixels form one region
+    labels: ndarray [x,y]
+        labels of ROIs
     coefs: FRETCoefs
         a, d, b, c are used
 
     Returns
     -------
-    fc_prof: ndarray [t]
+    profiles: dict of ndarray [roi,t]
+        'D', 'A', 'Fc', rows follow profiles.label_ids
 
     """
-    imgs = [np.asarray(img) if np.ndim(img) == 3 else np.asarray(img)[np.newaxis, ...]
-            for img in (dd_img, da_img, aa_img)]
-    profiles = [_masked_profile(img, mask) for img in imgs]
-    return fret_from_intensities(*profiles, coefs)['Fc']
+    labels = np.asarray(labels)
+    if labels.dtype == bool:
+        labels = labels.astype(np.uint8)
+    prof = [labels_to_profiles(labels, img) for img in (dd_img, da_img, aa_img)]
+    return fret_from_intensities(*prof, coefs)
 
 
 class CubesFRET():

@@ -131,7 +131,7 @@ def test_pipeline(tmp_path):
     assert 'TagBFP/mBaoJin' in w['g_calc'].fret_pair.choices
     _run(w['g_calc'], estimation_method='Zal', mask=mask, fragments_num=2,
          select_frames=True, frames_high_FRET=[0, 4], frames_low_FRET=[4, 8], **g_args)
-    assert pd.read_csv(tmp_path / 'cell_algn_G.csv')['n_frames_h'][0] == 4
+    assert pd.read_csv(tmp_path / 'cell_algn_G_high0-3_low4-7.csv')['n_frames_h'][0] == 4
     with pytest.raises(ValueError):
         w['g_calc'](estimation_method='Zal', mask=mask, select_frames=True, frames_high_FRET=[2, 9], **g_args)
     _run(w['g_calc'], estimation_method='Chen', mask_high=v.layers['cell_algn_seg_labels'], mask_low=mask, **g_args)
@@ -139,8 +139,8 @@ def test_pipeline(tmp_path):
     from domb_napari._widgets import _common
     plot = _common._DOCKS[(id(v), 'G-factor estimation')].widget()
     assert plot.findChild(NavigationToolbar2QT) is not None       # export of the figure
-    assert len(plot.findChild(FigureCanvasQTAgg).figure.axes) == 3
-    rois = pd.read_csv(tmp_path / 'cell_algn_G_rois.csv')
+    assert len(plot.findChild(FigureCanvasQTAgg).figure.axes) == 4
+    rois = pd.read_csv(tmp_path / 'cell_algn_G_high0-7_low0-7_rois.csv')
     assert set(rois['construct']) == {'high', 'low'} and rois['fret_pair'][0] == 'TagBFP/mBaoJin'
 
     # series, masks, profiles, data frame

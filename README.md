@@ -303,7 +303,7 @@ G_{Zal} = \frac{F_c - F_c^{post}}{D^{post} - D} \qquad G_{Chen} = \frac{F_{c,1}/
 | `DD_img_high_FRET`, `DA_img_high_FRET`, `AA_img_high_FRET` | | 3D stacks: before bleaching / high FRET construct |
 | `DD_img_low_FRET`, `DA_img_low_FRET`, `AA_img_low_FRET` | | 3D stacks: after bleaching / low FRET construct |
 | `mask` | | `Zal`: Labels layer of ROIs or of the whole area |
-| `segment_mask`, `fragments_num` | on, 30 | `Zal`: split the mask into compact fragments of similar area (k-means) |
+| `segment_mask`, `fragments_num` | on, 30 | `Zal`: split the mask into compact fragments of similar area (k-means); mean fragment area must be at least 20 px |
 | `mask_high`, `mask_low` | | `Chen`: Labels layers of ROIs for both samples |
 | `select_frames` | off | off: all frames of every stack are averaged; on: only the selected ranges |
 | `frames_high_FRET`, `frames_low_FRET` | `[0, 5]` | `[start, stop]` frame indices of the high and low FRET stacks, `stop` excluded (Python slice); the same layer with different ranges can be used for both |
@@ -317,9 +317,9 @@ G_{Zal} = \frac{F_c - F_c^{post}}{D^{post} - D} \qquad G_{Chen} = \frac{F_{c,1}/
 - `Chen`: every term is a ratio of sums over ROIs; `g_err`, `g_ci_low`, `g_ci_high` are bootstrap error and 95% interval.
 - ROIs of one cell are not independent: errors describe the within-sample variability only.
 
-Plot: fit (left), ROI values (right) and mean F<sub>c</sub> inside of the mask in every frame of both stacks with the frames used for G shaded (bottom).
+Plot: fit (left), ROI values (right); F<sub>c</sub> and D in every frame of both stacks as mean ± SD over ROIs, frames used for G shaded (bottom).
 
-Output: `{name}_G.csv` (estimates), `{name}_G_rois.csv` (fit data: ROI label, area, ROI-mean `DD`, `DA`, `AA`, `D`, `A`, `Fc` of both images or constructs; `dD`, `dFc` for `Zal`; `D/A`, `Fc/A` for `Chen`), plot, `_seg_labels` (if `segment_mask`). Both tables start with `id`, `fret_pair`, `method`.
+Output: `{name}_G_high{start}-{end}_low{start}-{end}.csv` (estimates, frame indices inclusive, all frames if `select_frames` is off), `{name}_G_high…_low…_rois.csv` (fit data: ROI label, area, ROI-mean `DD`, `DA`, `AA`, `D`, `A`, `Fc` of both images or constructs; `dD`, `dFc` for `Zal`; `D/A`, `Fc/A` for `Chen`), plot, `_seg_labels` (if `segment_mask`). Both tables start with `id`, `fret_pair`, `method`.
 
 ### E-FRET Estimation
 Pixel-wise estimation.
